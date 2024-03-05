@@ -11,6 +11,7 @@ interface ISicbo {
     uint256 epoch;
     uint256 startTimestamp;
     uint256 lockTimestamp;
+    uint256 closeTimestamp;
     uint256 closeRequestId;
     uint256 closeResult;
     uint256 totalAmount;
@@ -32,8 +33,10 @@ interface ISicbo {
   event Claim(address indexed gambler, uint256 indexed epoch, uint256 amount);
 
   event StartRound(uint256 indexed epoch);
-  event EndRound(uint256 indexed epoch, uint256 indexed resultNumber);
-  event LockRound(uint256 indexed epoch, uint256 indexed resultNumber);
+  event LockRound(uint256 indexed epoch);
+  event EndRound(
+    uint256 indexed epoch, uint256 indexed requestId, uint256 resultNumber
+  );
 
   event Pause(uint256 indexed epoch);
   event Unpause(uint256 indexed epoch);

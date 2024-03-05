@@ -7,7 +7,7 @@ import {VRFCoordinatorV2Interface} from
   "chainlink/src/v0.8/vrf/interfaces/VRFCoordinatorV2Interface.sol";
 import {VRFConsumerBaseV2} from "chainlink/src/v0.8/vrf/VRFConsumerBaseV2.sol";
 
-abstract contract ChainlinkComsumer is VRFConsumerBaseV2, ConfirmedOwner {
+abstract contract ChainlinkConsumer is VRFConsumerBaseV2, ConfirmedOwner {
   event RequestSent(uint256 requestId, uint32 numWords);
   event RequestFulfilled(uint256 requestId, uint256[] randomWords);
 
@@ -66,7 +66,7 @@ abstract contract ChainlinkComsumer is VRFConsumerBaseV2, ConfirmedOwner {
   }
 
   function getRequestStatus(uint256 requestId_)
-    external
+    public
     view
     returns (bool fulfilled, uint256[] memory randomWords)
   {

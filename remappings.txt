@@ -4,6 +4,6 @@ chainlink/=lib/chainlink/contracts/
 ds-test/=lib/forge-std/lib/ds-test/src/
 erc4626-tests/=lib/openzeppelin-contracts-upgradeable/lib/erc4626-tests/
 forge-std/=lib/forge-std/src/
-minimal-deployment-kit/=lib/minimal-deployment-kit/
+@kit/=lib/minimal-deployment-kit/script/
 openzeppelin-contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/
 openzeppelin-contracts/=lib/openzeppelin-contracts/
