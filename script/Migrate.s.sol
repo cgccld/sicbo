@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.23;
 
-import {console2 as console, StdStyle, BaseDeploy} from "@kit/BaseDeploy.s.sol";
-import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import {TransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
+import {
+  console2 as console, StdStyle, BaseDeploy
+} from "@kit/BaseDeploy.s.sol";
+import {ERC1967Proxy} from
+  "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {TransparentUpgradeableProxy} from
+  "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 
 interface IProxy {
   function upgradeToAndCall(address implementation, bytes memory data) external;
@@ -40,15 +44,19 @@ abstract contract BaseMigrate is BaseDeploy {
     returns (address proxy)
   {
     address logic = deploy(fileDest, EMPTY_ARGS);
-    proxy = deploy("TransparentUpgradeableProxy.sol:TransparentUpgradeableProxy", abi.encode(logic, msg.sender, args));
+    proxy = deploy(
+      "TransparentUpgradeableProxy.sol:TransparentUpgradeableProxy",
+      abi.encode(logic, msg.sender, args)
+    );
     console.log("Logic address: ".green(), logic);
     console.log("Proxy address: ".green(), proxy);
   }
 
-  function upgradeProxy(string memory fileDest, address proxy, bytes memory args)
-    public
-    log(string.concat("Upgrade for ", fileDest))
-  {
+  function upgradeProxy(
+    string memory fileDest,
+    address proxy,
+    bytes memory args
+  ) public log(string.concat("Upgrade for ", fileDest)) {
     address logic = deploy(fileDest, EMPTY_ARGS);
     IProxy(proxy).upgradeToAndCall(logic, args);
     console.log("Logic address: ".green(), logic);

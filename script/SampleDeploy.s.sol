@@ -17,11 +17,15 @@ contract SampleDeploy is BaseMigrate {
   }
 
   function deploySampleUUPS() public broadcast {
-    deployUUPSProxy("Sample.sol:SampleUUPS", abi.encodeCall(SampleUUPS.initialize, ()));
+    deployUUPSProxy(
+      "Sample.sol:SampleUUPS", abi.encodeCall(SampleUUPS.initialize, ())
+    );
   }
 
   function deploySampleTransparent() public broadcast {
-    deployTransparentProxy("Sample.sol:SampleTransparent", abi.encodeCall(SampleUUPS.initialize, ()));
+    deployTransparentProxy(
+      "Sample.sol:SampleTransparent", abi.encodeCall(SampleUUPS.initialize, ())
+    );
   }
 
   function _postCheck() internal pure override log("_postCheck") {}

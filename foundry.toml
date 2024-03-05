@@ -4,7 +4,7 @@ out = "out"
 test = "test"
 libs = ["lib"]
 
-solc = "0.8.23"
+solc = "0.8.24"
 evm_version = "paris"
 use_literal_content = true
 
@@ -13,7 +13,7 @@ optimizer_runs = 200_000
 
 [fmt]
 tab_width = 2
-line_length = 120
+line_length = 80
 quote_style = "double"
 number_underscore = "thousands"
 

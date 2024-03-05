@@ -10,3 +10,6 @@
 [submodule "lib/minimal-deployment-kit"]
 	path = lib/minimal-deployment-kit
 	url = https://github.com/tasibii/minimal-deployment-kit
+[submodule "lib/chainlink"]
+	path = lib/chainlink
+	url = https://github.com/smartcontractkit/chainlink
