@@ -20,11 +20,11 @@ abstract contract ChainlinkConsumer is VRFConsumerBaseV2, ConfirmedOwner {
   mapping(uint256 => RequestStatus) public s_requests; /* requestId --> requestStatus */
   VRFCoordinatorV2Interface COORDINATOR;
 
-  uint16 requestComfirmations;
-  uint32 numWords;
-  uint32 callbackGasLimit;
+  uint16 requestComfirmations = 3;
+  uint32 numWords = 1;
+  uint32 callbackGasLimit = 100_000;
   uint64 s_subscriptionId;
-  bytes32 keyHash;
+  bytes32 keyHash = 0x354d2f95da55398f44b7cff77da56283d9c6c829a4bdf1bbcaf2ad6a4d081f61;
   // past requests Id.
   uint256 public lastRequestId;
   uint256[] public requestIds;
