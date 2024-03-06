@@ -9,12 +9,7 @@ import {ChainlinkConsumer} from "src/v0/utils/ChainlinkConsumer.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 // forgefmt: disable-end
 
-contract Sicbo is
-  ISicbo,
-  Pausable,
-  ReentrancyGuard,
-  ChainlinkConsumer
-{
+contract Sicbo is ISicbo, Pausable, ReentrancyGuard, ChainlinkConsumer {
   Currency token; // sicbo token
 
   bool public genesisLockOnce = false;
@@ -39,9 +34,7 @@ contract Sicbo is
     uint256 bufferSeconds_,
     uint256 minBetAmount_,
     uint256 protocolFee_
-  )
-    ChainlinkConsumer(subscriptionId_, _msgSender(), consumer_)
-  {
+  ) ChainlinkConsumer(subscriptionId_, _msgSender(), consumer_) {
     token = token_;
     intervalSeconds = intervalSeconds_;
     bufferSeconds = bufferSeconds_;
@@ -143,10 +136,6 @@ contract Sicbo is
     }
   }
 
-  function getRandomNumber() external onlyOwner {
-    _requestRandomWords();
-  }
-
   function executeRound() external whenNotPaused onlyOwner {
     require(
       genesisStartOnce && genesisLockOnce,
@@ -200,6 +189,61 @@ contract Sicbo is
     _unpause();
 
     emit Unpause(currentEpoch);
+  }
+
+  function setBufferAndIntervalSeconds(
+    uint256 bufferSeconds_,
+    uint256 intervalSeconds_
+  ) external whenPaused onlyOwner {
+    require(
+      bufferSeconds_ < intervalSeconds_,
+      "bufferSeconds must be inferior to intervalSeconds"
+    );
+
+    bufferSeconds = bufferSeconds_;
+    intervalSeconds = intervalSeconds_;
+
+    emit NewBufferAndIntervalSeconds(bufferSeconds_, intervalSeconds_);
+  }
+
+  function setMinBetAmount(uint256 minBetAmount_) external whenPaused onlyOwner {
+    require(minBetAmount_ != 0, "Must be superior to 0");
+
+    minBetAmount = minBetAmount_;
+
+    emit NewMinBetAmount(currentEpoch, minBetAmount);
+  }
+
+  function setProtocolFee(uint256 protocolFee_) external whenPaused onlyOwner {
+    protocolFee = protocolFee_;
+
+    emit NewProtocolFee(currentEpoch, protocolFee_);
+  }
+
+  function getUserRounds(address user, uint256 cursor, uint256 size)
+    external
+    view
+    returns (uint256[] memory, BetInfo[] memory, uint256)
+  {
+    uint256 length = size;
+
+    if (length > userRounds[user].length - cursor) {
+      length = userRounds[user].length - cursor;
+    }
+
+    uint256[] memory values = new uint256[](length);
+    BetInfo[] memory betInfo = new BetInfo[](length);
+
+    for (uint256 i = 0; i < length; i++) {
+      values[i] = userRounds[user][cursor + i];
+      betInfo[i] = ledger[values[i]][user];
+    }
+
+    return (values, betInfo, cursor + length);
+  }
+
+  function getUserRoundsLength(address user) external view returns (uint256) {
+    return userRounds[user].length;
   }
 
   function claimable(uint256 epoch_, address user_) public view returns (bool) {

@@ -32,6 +32,12 @@ interface ISicbo {
   event BetEven(address indexed gambler, uint256 indexed epoch, uint256 amount);
   event Claim(address indexed gambler, uint256 indexed epoch, uint256 amount);
 
+  event NewProtocolFee(uint256 indexed epoch, uint256 protocolFee);
+  event NewMinBetAmount(uint256 indexed epoch, uint256 minBetAmount);
+  event NewBufferAndIntervalSeconds(
+    uint256 bufferSeconds, uint256 intervalSeconds
+  );
+
   event StartRound(uint256 indexed epoch);
   event LockRound(uint256 indexed epoch);
   event EndRound(

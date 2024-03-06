@@ -8,42 +8,58 @@ import {VRFCoordinatorV2Interface} from
 import {VRFConsumerBaseV2} from "chainlink/src/v0.8/vrf/VRFConsumerBaseV2.sol";
 
 abstract contract ChainlinkConsumer is VRFConsumerBaseV2, ConfirmedOwner {
+  event ConsumerConfigured();
   event RequestSent(uint256 requestId, uint32 numWords);
   event RequestFulfilled(uint256 requestId, uint256[] randomWords);
 
   struct RequestStatus {
-    bool exists; // whether a requestId exists
-    bool fulfilled; // whether the request has been successfully fulfilled
+    bool exists; 
+    bool fulfilled; 
     uint256[] randomWords;
   }
 
-  mapping(uint256 => RequestStatus) public s_requests; /* requestId --> requestStatus */
+  struct Config {
+    uint16 confirmations;
+    uint32 numWords;
+    uint32 callbackGasLimit;
+    uint64 subscriptionId;
+    bytes32 keyHash;
+  }
+
+  Config $config;
+  uint256 public lastRequestId;
   VRFCoordinatorV2Interface COORDINATOR;
 
-  uint16 requestComfirmations = 3;
-  uint32 numWords = 1;
-  uint32 callbackGasLimit = 100_000;
-  uint64 s_subscriptionId;
-  bytes32 keyHash = 0x354d2f95da55398f44b7cff77da56283d9c6c829a4bdf1bbcaf2ad6a4d081f61;
-  // past requests Id.
-  uint256 public lastRequestId;
   uint256[] public requestIds;
+  mapping(uint256 => RequestStatus) public s_requests; /* requestId --> requestStatus */
 
   constructor(uint64 subscriptionId_, address owner_, address consumer_)
     ConfirmedOwner(owner_)
     VRFConsumerBaseV2(consumer_)
   {
     COORDINATOR = VRFCoordinatorV2Interface(consumer_);
-    s_subscriptionId = subscriptionId_;
+    $config = Config({
+      confirmations: 3,
+      numWords: 1,
+      callbackGasLimit: 100_000,
+      subscriptionId: subscriptionId_,
+      keyHash: 0x354d2f95da55398f44b7cff77da56283d9c6c829a4bdf1bbcaf2ad6a4d081f61 
+    });
+  }
+  
+  function config(Config calldata config_) external onlyOwner {
+    $config = config_;
+    emit ConsumerConfigured();
   }
 
-  function _requestRandomWords() internal {
+  function requestRandomWords() external onlyOwner {
+    Config storage c = $config;
     uint256 requestId = COORDINATOR.requestRandomWords(
-      keyHash,
-      s_subscriptionId,
-      requestComfirmations,
-      callbackGasLimit,
-      numWords
+      c.keyHash,
+      c.subscriptionId,
+      c.confirmations,
+      c.callbackGasLimit,
+      c.numWords
     );
     s_requests[requestId] = RequestStatus({
       randomWords: new uint256[](0),
@@ -52,7 +68,8 @@ abstract contract ChainlinkConsumer is VRFConsumerBaseV2, ConfirmedOwner {
     });
     requestIds.push(requestId);
     lastRequestId = requestId;
-    emit RequestSent(requestId, numWords);
+
+    emit RequestSent(requestId, c.numWords);
   }
 
   function fulfillRandomWords(uint256 requestId_, uint256[] memory randomWords_)
