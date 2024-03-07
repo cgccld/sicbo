@@ -12,29 +12,28 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 contract Sicbo is ISicbo, Pausable, ReentrancyGuard, ChainlinkConsumer {
   Currency token; // sicbo token
 
-  // bool public genesisLockOnce = false;
   bool public genesisStartOnce = false;
 
-  uint256 public minBetAmount;
   uint256 public protocolFee;
-  uint256 public treasuryAmount;
-  uint256 public bufferSeconds;
-  uint256 public intervalSeconds;
+  uint256 public minBetAmount;
   uint256 public currentEpoch;
+  uint256 public bufferSeconds;
+  uint256 public treasuryAmount;
+  uint256 public intervalSeconds;
 
-  mapping(uint256 => mapping(address => BetInfo)) public ledger;
   mapping(uint256 => Round) public rounds;
   mapping(address => uint256[]) public userRounds;
+  mapping(uint256 => mapping(address => BetInfo)) public ledger;
 
   constructor(
     Currency token_,
     uint64 subscriptionId_,
-    address consumer_,
+    address coordinator_,
     uint256 intervalSeconds_,
     uint256 bufferSeconds_,
     uint256 minBetAmount_,
     uint256 protocolFee_
-  ) ChainlinkConsumer(subscriptionId_, _msgSender(), consumer_) {
+  ) ChainlinkConsumer(subscriptionId_, _msgSender(), coordinator_) {
     token = token_;
     intervalSeconds = intervalSeconds_;
     bufferSeconds = bufferSeconds_;
@@ -138,7 +137,6 @@ contract Sicbo is ISicbo, Pausable, ReentrancyGuard, ChainlinkConsumer {
 
   function resolveRound() external whenNotPaused onlyOwner {
     _requestRandomWords();
-    // _safeLockRound(currentEpoch);
   }
 
   function executeRound() external whenNotPaused onlyOwner {
@@ -148,30 +146,17 @@ contract Sicbo is ISicbo, Pausable, ReentrancyGuard, ChainlinkConsumer {
     );
 
     (bool isFulfilled, uint256[] memory randomWords) =
-      getRequestStatus(lastRequestId);
+      getRequestStatus(latestRequestId);
     require(isFulfilled, "Can only run after request fulfilled");
 
     uint256 result = randomWords[0] % 2 + 1;
 
-    _safeEndRound(currentEpoch, lastRequestId, result);
+    _safeEndRound(currentEpoch, latestRequestId, result);
     _calculateRewards(currentEpoch);
 
     currentEpoch = currentEpoch + 1;
     _safeStartRound(currentEpoch);
   }
-
-  // function genesisLockRound() external whenNotPaused onlyOwner {
-  //   require(
-  //     genesisStartOnce, "Can only run after genesisStartRound is triggered"
-  //   );
-  //   require(!genesisLockOnce, "Can only run genesisLockRound once");
-
-  //   _safeLockRound(currentEpoch);
-
-  //   currentEpoch = currentEpoch + 1;
-  //   _startRound(currentEpoch);
-  //   genesisLockOnce = true;
-  // }
 
   function genesisStartRound() external whenNotPaused onlyOwner {
     require(!genesisStartOnce, "Can only run genesisStartRound once");
@@ -189,7 +174,6 @@ contract Sicbo is ISicbo, Pausable, ReentrancyGuard, ChainlinkConsumer {
 
   function unpause() external whenPaused onlyOwner {
     genesisStartOnce = false;
-    // genesisLockOnce = false;
     _unpause();
 
     emit Unpause(currentEpoch);
@@ -329,25 +313,6 @@ contract Sicbo is ISicbo, Pausable, ReentrancyGuard, ChainlinkConsumer {
 
     emit EndRound(epoch_, requestId_, result_);
   }
-
-  // function _safeLockRound(uint256 epoch_) internal {
-  //   require(
-  //     rounds[epoch_].startTimestamp != 0,
-  //     "Can only lock round after round has started"
-  //   );
-  //   require(
-  //     block.timestamp >= rounds[epoch_].lockTimestamp,
-  //     "Can only lock round after lockTimestamp"
-  //   );
-  //   require(
-  //     block.timestamp <= rounds[epoch_].lockTimestamp + bufferSeconds,
-  //     "Can only lock round within bufferSeconds"
-  //   );
-  //   Round storage round = rounds[epoch_];
-  //   round.closeTimestamp = block.timestamp + intervalSeconds;
-
-  //   emit LockRound(epoch_);
-  // }
 
   function _safeStartRound(uint256 epoch_) internal {
     require(

@@ -7,6 +7,12 @@ interface ISicbo {
     Even
   }
 
+  struct BetInfo {
+    Position position;
+    uint256 amount;
+    bool claimed;
+  }
+
   struct Round {
     uint256 epoch;
     uint256 startTimestamp;
@@ -22,12 +28,6 @@ interface ISicbo {
     bool requestedRandom;
   }
 
-  struct BetInfo {
-    Position position;
-    uint256 amount;
-    bool claimed;
-  }
-
   event BetOdd(address indexed gambler, uint256 indexed epoch, uint256 amount);
   event BetEven(address indexed gambler, uint256 indexed epoch, uint256 amount);
   event Claim(address indexed gambler, uint256 indexed epoch, uint256 amount);
@@ -39,7 +39,6 @@ interface ISicbo {
   );
 
   event StartRound(uint256 indexed epoch);
-  event LockRound(uint256 indexed epoch);
   event EndRound(
     uint256 indexed epoch, uint256 indexed requestId, uint256 resultNumber
   );

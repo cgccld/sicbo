@@ -27,17 +27,17 @@ abstract contract ChainlinkConsumer is VRFConsumerBaseV2, ConfirmedOwner {
   }
 
   Config $config;
-  uint256 public lastRequestId;
+  uint256 public latestRequestId;
   VRFCoordinatorV2Interface COORDINATOR;
 
   uint256[] public requestIds;
-  mapping(uint256 => RequestStatus) public s_requests; /* requestId --> requestStatus */
+  mapping(uint256 => RequestStatus) internal _s_requests; /* requestId --> requestStatus */
 
-  constructor(uint64 subscriptionId_, address owner_, address consumer_)
+  constructor(uint64 subscriptionId_, address owner_, address coordinator_)
     ConfirmedOwner(owner_)
-    VRFConsumerBaseV2(consumer_)
+    VRFConsumerBaseV2(coordinator_)
   {
-    COORDINATOR = VRFCoordinatorV2Interface(consumer_);
+    COORDINATOR = VRFCoordinatorV2Interface(coordinator_);
     $config = Config({
       confirmations: 3,
       numWords: 1,
@@ -61,13 +61,13 @@ abstract contract ChainlinkConsumer is VRFConsumerBaseV2, ConfirmedOwner {
       c.callbackGasLimit,
       c.numWords
     );
-    s_requests[requestId] = RequestStatus({
+    _s_requests[requestId] = RequestStatus({
       randomWords: new uint256[](0),
       exists: true,
       fulfilled: false
     });
     requestIds.push(requestId);
-    lastRequestId = requestId;
+    latestRequestId = requestId;
 
     emit RequestSent(requestId, c.numWords);
   }
@@ -76,9 +76,9 @@ abstract contract ChainlinkConsumer is VRFConsumerBaseV2, ConfirmedOwner {
     internal
     override
   {
-    require(s_requests[requestId_].exists, "RNF");
-    s_requests[requestId_].fulfilled = true;
-    s_requests[requestId_].randomWords = randomWords_;
+    require(_s_requests[requestId_].exists, "RNF");
+    _s_requests[requestId_].fulfilled = true;
+    _s_requests[requestId_].randomWords = randomWords_;
     emit RequestFulfilled(requestId_, randomWords_);
   }
 
@@ -87,8 +87,8 @@ abstract contract ChainlinkConsumer is VRFConsumerBaseV2, ConfirmedOwner {
     view
     returns (bool fulfilled, uint256[] memory randomWords)
   {
-    require(s_requests[requestId_].exists, "RNF");
-    RequestStatus memory req = s_requests[requestId_];
+    require(_s_requests[requestId_].exists, "RNF");
+    RequestStatus memory req = _s_requests[requestId_];
     return (req.fulfilled, req.randomWords);
   }
 }
