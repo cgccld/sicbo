@@ -10,8 +10,7 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 // forgefmt: disable-end
 
 contract Sicbo is ISicbo, Pausable, ReentrancyGuard, ChainlinkConsumer {
-  Currency token; // sicbo token
-
+  Currency token;
   bool public genesisStartOnce = false;
 
   uint256 public protocolFee;
@@ -29,16 +28,16 @@ contract Sicbo is ISicbo, Pausable, ReentrancyGuard, ChainlinkConsumer {
     Currency token_,
     uint64 subscriptionId_,
     address coordinator_,
-    uint256 intervalSeconds_,
-    uint256 bufferSeconds_,
+    uint256 protocolFee_,
     uint256 minBetAmount_,
-    uint256 protocolFee_
+    uint256 bufferSeconds_,
+    uint256 intervalSeconds_
   ) ChainlinkConsumer(subscriptionId_, _msgSender(), coordinator_) {
     token = token_;
-    intervalSeconds = intervalSeconds_;
-    bufferSeconds = bufferSeconds_;
-    minBetAmount = minBetAmount_;
     protocolFee = protocolFee_;
+    minBetAmount = minBetAmount_;
+    bufferSeconds = bufferSeconds_;
+    intervalSeconds = intervalSeconds_;
   }
 
   function betOdd(uint256 epoch_, uint256 amount_)
@@ -141,8 +140,7 @@ contract Sicbo is ISicbo, Pausable, ReentrancyGuard, ChainlinkConsumer {
 
   function executeRound() external whenNotPaused onlyOwner {
     require(
-      genesisStartOnce,
-      "Can only run after genesisStartRound is triggered"
+      genesisStartOnce, "Can only run after genesisStartRound is triggered"
     );
 
     (bool isFulfilled, uint256[] memory randomWords) =
