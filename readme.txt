@@ -30,7 +30,7 @@ VERIFY
 
 $ source .env
 $ forge verify-contract \
-        0x4259557F6665eCF5907c9019a30f3Cb009c20Ae7 \
+        0xE406c1E238e17C4c854571EC48dBAD169579b381 \
         ./src/v0/Sicbo.sol:Sicbo \
         --chain fuji \
         --etherscan-api-key $SNOWTRACE_SCAN \

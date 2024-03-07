@@ -12,7 +12,7 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 contract Sicbo is ISicbo, Pausable, ReentrancyGuard, ChainlinkConsumer {
   Currency token; // sicbo token
 
-  bool public genesisLockOnce = false;
+  // bool public genesisLockOnce = false;
   bool public genesisStartOnce = false;
 
   uint256 public minBetAmount;
@@ -114,7 +114,7 @@ contract Sicbo is ISicbo, Pausable, ReentrancyGuard, ChainlinkConsumer {
 
       uint256 addedReward = 0;
 
-      if (rounds[epochs_[i]].oracleCalled) {
+      if (rounds[epochs_[i]].requestedRandom) {
         require(claimable(epochs_[i], _msgSender()), "Not eligible for claim");
         Round memory round = rounds[epochs_[i]];
         addedReward = (
@@ -136,10 +136,15 @@ contract Sicbo is ISicbo, Pausable, ReentrancyGuard, ChainlinkConsumer {
     }
   }
 
+  function resolveRound() external whenNotPaused onlyOwner {
+    _requestRandomWords();
+    // _safeLockRound(currentEpoch);
+  }
+
   function executeRound() external whenNotPaused onlyOwner {
     require(
-      genesisStartOnce && genesisLockOnce,
-      "Can only run after genesisStartRound and genesisLockRound is triggered"
+      genesisStartOnce,
+      "Can only run after genesisStartRound is triggered"
     );
 
     (bool isFulfilled, uint256[] memory randomWords) =
@@ -148,26 +153,25 @@ contract Sicbo is ISicbo, Pausable, ReentrancyGuard, ChainlinkConsumer {
 
     uint256 result = randomWords[0] % 2 + 1;
 
-    _safeLockRound(currentEpoch);
-    _safeEndRound(currentEpoch - 1, lastRequestId, result);
-    _calculateRewards(currentEpoch - 1);
+    _safeEndRound(currentEpoch, lastRequestId, result);
+    _calculateRewards(currentEpoch);
 
     currentEpoch = currentEpoch + 1;
     _safeStartRound(currentEpoch);
   }
 
-  function genesisLockRound() external whenNotPaused onlyOwner {
-    require(
-      genesisStartOnce, "Can only run after genesisStartRound is triggered"
-    );
-    require(!genesisLockOnce, "Can only run genesisLockRound once");
+  // function genesisLockRound() external whenNotPaused onlyOwner {
+  //   require(
+  //     genesisStartOnce, "Can only run after genesisStartRound is triggered"
+  //   );
+  //   require(!genesisLockOnce, "Can only run genesisLockRound once");
 
-    _safeLockRound(currentEpoch);
+  //   _safeLockRound(currentEpoch);
 
-    currentEpoch = currentEpoch + 1;
-    _startRound(currentEpoch);
-    genesisLockOnce = true;
-  }
+  //   currentEpoch = currentEpoch + 1;
+  //   _startRound(currentEpoch);
+  //   genesisLockOnce = true;
+  // }
 
   function genesisStartRound() external whenNotPaused onlyOwner {
     require(!genesisStartOnce, "Can only run genesisStartRound once");
@@ -185,7 +189,7 @@ contract Sicbo is ISicbo, Pausable, ReentrancyGuard, ChainlinkConsumer {
 
   function unpause() external whenPaused onlyOwner {
     genesisStartOnce = false;
-    genesisLockOnce = false;
+    // genesisLockOnce = false;
     _unpause();
 
     emit Unpause(currentEpoch);
@@ -249,14 +253,14 @@ contract Sicbo is ISicbo, Pausable, ReentrancyGuard, ChainlinkConsumer {
   function claimable(uint256 epoch_, address user_) public view returns (bool) {
     BetInfo memory betInfo = ledger[epoch_][user_];
     Round memory round = rounds[epoch_];
-    return round.oracleCalled && betInfo.amount != 0 && !betInfo.claimed
+    return round.requestedRandom && betInfo.amount != 0 && !betInfo.claimed
       && (betInfo.position == Position.Odd || betInfo.position == Position.Even);
   }
 
   function refundable(uint256 epoch_, address user_) public view returns (bool) {
     BetInfo memory betInfo = ledger[epoch_][user_];
     Round memory round = rounds[epoch_];
-    return !round.oracleCalled && !betInfo.claimed
+    return !round.requestedRandom && !betInfo.claimed
       && block.timestamp > round.closeTimestamp + bufferSeconds
       && betInfo.amount != 0;
   }
@@ -321,41 +325,41 @@ contract Sicbo is ISicbo, Pausable, ReentrancyGuard, ChainlinkConsumer {
     Round storage round = rounds[epoch_];
     round.closeResult = result_;
     round.closeRequestId = requestId_;
-    round.oracleCalled = true;
+    round.requestedRandom = true;
 
     emit EndRound(epoch_, requestId_, result_);
   }
 
-  function _safeLockRound(uint256 epoch_) internal {
-    require(
-      rounds[epoch_].startTimestamp != 0,
-      "Can only lock round after round has started"
-    );
-    require(
-      block.timestamp >= rounds[epoch_].lockTimestamp,
-      "Can only lock round after lockTimestamp"
-    );
-    require(
-      block.timestamp <= rounds[epoch_].lockTimestamp + bufferSeconds,
-      "Can only lock round within bufferSeconds"
-    );
-    Round storage round = rounds[epoch_];
-    round.closeTimestamp = block.timestamp + intervalSeconds;
+  // function _safeLockRound(uint256 epoch_) internal {
+  //   require(
+  //     rounds[epoch_].startTimestamp != 0,
+  //     "Can only lock round after round has started"
+  //   );
+  //   require(
+  //     block.timestamp >= rounds[epoch_].lockTimestamp,
+  //     "Can only lock round after lockTimestamp"
+  //   );
+  //   require(
+  //     block.timestamp <= rounds[epoch_].lockTimestamp + bufferSeconds,
+  //     "Can only lock round within bufferSeconds"
+  //   );
+  //   Round storage round = rounds[epoch_];
+  //   round.closeTimestamp = block.timestamp + intervalSeconds;
 
-    emit LockRound(epoch_);
-  }
+  //   emit LockRound(epoch_);
+  // }
 
   function _safeStartRound(uint256 epoch_) internal {
     require(
       genesisStartOnce, "Can only run after genesisStartRound is triggered"
     );
     require(
-      rounds[epoch_ - 2].closeTimestamp != 0,
-      "Can only start round after round n-2 has ended"
+      rounds[epoch_ - 1].closeTimestamp != 0,
+      "Can only start round after round n-1 has ended"
     );
     require(
-      block.timestamp >= rounds[epoch_ - 2].closeTimestamp,
-      "Can only start new round after round n-2 closeTimestamp"
+      block.timestamp >= rounds[epoch_ - 1].closeTimestamp,
+      "Can only start new round after round n-1 closeTimestamp"
     );
     _startRound(epoch_);
   }

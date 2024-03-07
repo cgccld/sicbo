@@ -19,7 +19,7 @@ interface ISicbo {
     uint256 evenAmount;
     uint256 rewardBaseCalAmount;
     uint256 rewardAmount;
-    bool oracleCalled;
+    bool requestedRandom;
   }
 
   struct BetInfo {

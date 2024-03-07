@@ -52,7 +52,7 @@ abstract contract ChainlinkConsumer is VRFConsumerBaseV2, ConfirmedOwner {
     emit ConsumerConfigured();
   }
 
-  function requestRandomWords() external onlyOwner {
+  function _requestRandomWords() internal {
     Config storage c = $config;
     uint256 requestId = COORDINATOR.requestRandomWords(
       c.keyHash,
