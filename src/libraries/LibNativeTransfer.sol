@@ -13,8 +13,7 @@ library LibNativeTransfer {
    * @dev Transfers Native Coin and wraps result for the method caller to a recipient.
    */
   function transfer(address to, uint256 value, uint256 gasAmount) internal {
-    (bool success, bytes memory returnOrRevertData) =
-      trySendValue(to, value, gasAmount);
+    (bool success, bytes memory returnOrRevertData) = trySendValue(to, value, gasAmount);
     success.handleRevert(bytes4(0x0), returnOrRevertData);
   }
 

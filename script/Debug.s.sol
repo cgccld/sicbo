@@ -6,13 +6,7 @@ import {BaseScript, ErrorHandler} from "@kit/Base.s.sol";
 contract Debug is BaseScript {
   using ErrorHandler for *;
 
-  function debug(
-    uint256 forkBlock,
-    address from,
-    address to,
-    uint256 value,
-    bytes memory callData
-  ) external {
+  function debug(uint256 forkBlock, address from, address to, uint256 value, bytes memory callData) external {
     if (forkBlock != 0) {
       vm.rollFork(forkBlock);
     }

@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {IERC20Metadata} from
-  "@openzeppelin/contracts/interfaces/IERC20Metadata.sol";
-import {SafeERC20} from
-  "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/interfaces/IERC20Metadata.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {LibNativeTransfer} from "./LibNativeTransfer.sol";
 
 type Currency is address;
@@ -125,9 +123,7 @@ library LibCurrency {
    * @param from The address from which the receive is made.
    * @param amount The amount to receive.
    */
-  function receiveFrom(Currency currency, address from, uint256 amount)
-    internal
-  {
+  function receiveFrom(Currency currency, address from, uint256 amount) internal {
     if (amount == 0) revert ReceiveZeroAmount(currency);
     if (isNative(currency)) {
       if (from != msg.sender) revert InvalidReceiveFrom(from);
@@ -139,9 +135,7 @@ library LibCurrency {
         emit Refunded(from, refund);
       }
     } else {
-      IERC20Metadata(Currency.unwrap(currency)).transferFrom(
-        from, address(this), amount
-      );
+      IERC20Metadata(Currency.unwrap(currency)).transferFrom(from, address(this), amount);
     }
   }
 }
