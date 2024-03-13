@@ -1,4 +1,4 @@
-Sicbo deployment
+Sicbo deployment for demo purposes
 
 INSTALLATION
 
@@ -55,4 +55,4 @@ $ forge script script/Debug.s.sol \
         -f fuji \
         -vv
 
--tasibii
+-cgccld
