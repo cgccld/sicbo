@@ -1,5 +1,17 @@
 Sicbo deployment for demo purposes
 
+
+COMPARATIONS
+
+Chainlink VRF
+- Expensive 
+- Can configure the callback gas limit, num of block confirmations
+
+API3 QRNG 
+- Cheaper
+- Only able to configure the size of array random number generated
+
+
 INSTALLATION
 
 $ forge install
