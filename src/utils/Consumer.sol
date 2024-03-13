@@ -82,7 +82,7 @@ abstract contract Consumer is IConsumer, VRFConsumerBaseV2 {
 
   function _additionalHandler(uint256 requestId_, uint256[] memory randomWords_) internal virtual {}
 
-  function _fulfillRandomWords(uint256 requestId_, uint256[] memory randomWords) internal {
+  function _fulfillRandomWords(uint256 requestId_, uint256[] memory randomWords_) internal {
     $detail[requestId_].fulfilled = true;
     $detail[requestId_].randomWords = randomWords_;
     emit RequestFulfilled(requestId_, randomWords_);

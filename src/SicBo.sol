@@ -190,7 +190,12 @@ contract SicBo is ISicBo, Pausable, ReentrancyGuard, Consumer, Ownable {
   //   _safeStartRound(currentEpoch);
   // }
 
-  function executeRound(uint256 requestId_, uint256[] memory randomWords_) public whenNotPaused onlyOwner onlyFulfilled(requestId_) {
+  function executeRound(uint256 requestId_, uint256[] memory randomWords_)
+    public
+    whenNotPaused
+    onlyOwner
+    onlyFulfilled(requestId_)
+  {
     require(genesisStartOnce, "Can only run after genesisStartRound is triggered");
 
     uint256[] memory prefixed = _preFormatRandomWord(randomWords_);
