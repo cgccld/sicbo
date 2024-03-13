@@ -18,7 +18,7 @@ interface ISicBo {
     uint256 startAt;
     uint256 lockAt;
     uint256 closeAt;
-    uint256 requestId;
+    bytes32 requestId;
     uint256[] closeDicesResult;
     uint256 closeTotalScore;
     uint256 totalAmount;
@@ -26,7 +26,7 @@ interface ISicBo {
     uint256 highAmount;
     uint256 rewardBaseCalAmount;
     uint256 rewardAmount;
-    bool requestedVRF;
+    bool requestedQRNG;
   }
 
   struct SicBoSettings {
@@ -49,7 +49,7 @@ interface ISicBo {
   event SettingsConfigured(address indexed by);
 
   event StartRound(uint256 indexed epoch);
-  event EndRound(uint256 indexed epoch, uint256 indexed requestId, uint256 totalScore);
+  event EndRound(uint256 indexed epoch, bytes32 indexed requestId, uint256 totalScore);
 
   event Pause(uint256 indexed epoch);
   event Unpause(uint256 indexed epoch);
