@@ -32,7 +32,7 @@ interface IConsumer {
     uint32 gasLimit; // callback gas limit
   }
 
-  function getRandomWords(uint256 requestId_) external returns (uint256[] memory randomWords);
+  function getRequestStatus(uint256 requestId_) external returns (bool fulfilled, uint256[] memory randomWords);
 }
 
 abstract contract Consumer is IConsumer, VRFConsumerBaseV2 {
@@ -60,14 +60,14 @@ abstract contract Consumer is IConsumer, VRFConsumerBaseV2 {
     _configSettings(settings_);
   }
 
-  function getRandomWords(uint256 requestId_)
+  function getRequestStatus(uint256 requestId_)
     public
     view
     onlyFulfilled(requestId_)
-    returns (uint256[] memory randomWords)
+    returns (bool fulfilled, uint256[] memory randomWords)
   {
     RequestDetail memory req = $detail[requestId_];
-    randomWords = req.randomWords;
+    return (req.fulfilled, req.randomWords);
   }
 
   // override VRFConsumerBaseV2
@@ -76,6 +76,13 @@ abstract contract Consumer is IConsumer, VRFConsumerBaseV2 {
     override
     onlyRequested(requestId_)
   {
+    _additionalHandler(requestId_, randomWords_);
+    _fulfillRandomWords(requestId_, randomWords_);
+  }
+
+  function _additionalHandler(uint256 requestId_, uint256[] memory randomWords_) internal virtual {}
+
+  function _fulfillRandomWords(uint256 requestId_, uint256[] memory randomWords) internal {
     $detail[requestId_].fulfilled = true;
     $detail[requestId_].randomWords = randomWords_;
     emit RequestFulfilled(requestId_, randomWords_);

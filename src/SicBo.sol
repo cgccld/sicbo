@@ -176,14 +176,26 @@ contract SicBo is ISicBo, Pausable, ReentrancyGuard, Consumer, Ownable {
     _requestRandomWords();
   }
 
-  function executeRound() external whenNotPaused onlyOwner onlyFulfilled(latestRequestId) {
+  // function executeRound() external whenNotPaused onlyOwner onlyFulfilled(latestRequestId) {
+  //   require(genesisStartOnce, "Can only run after genesisStartRound is triggered");
+
+  //   uint256[] memory rawRandomWords = getRandomWords(latestRequestId);
+
+  //   uint256[] memory result = _preFormatRandomWord(rawRandomWords);
+
+  //   _safeEndRound(currentEpoch, latestRequestId, result);
+  //   _calculateRewards(currentEpoch);
+
+  //   currentEpoch = currentEpoch + 1;
+  //   _safeStartRound(currentEpoch);
+  // }
+
+  function executeRound(uint256 requestId_, uint256[] memory randomWords_) public whenNotPaused onlyOwner onlyFulfilled(requestId_) {
     require(genesisStartOnce, "Can only run after genesisStartRound is triggered");
 
-    uint256[] memory rawRandomWords = getRandomWords(latestRequestId);
+    uint256[] memory prefixed = _preFormatRandomWord(randomWords_);
 
-    uint256[] memory result = _preFormatRandomWord(rawRandomWords);
-
-    _safeEndRound(currentEpoch, latestRequestId, result);
+    _safeEndRound(currentEpoch, requestId_, prefixed);
     _calculateRewards(currentEpoch);
 
     currentEpoch = currentEpoch + 1;
@@ -213,6 +225,10 @@ contract SicBo is ISicBo, Pausable, ReentrancyGuard, Consumer, Ownable {
     currency_.transfer(_msgSender(), amount_);
 
     emit TokenRecovery(Currency.unwrap(currency_), amount_);
+  }
+
+  function _additionalHandler(uint256 requestId_, uint256[] memory randomWords_) internal override {
+    executeRound(requestId_, randomWords_);
   }
 
   function _calculateRewards(uint256 epoch_) internal {
