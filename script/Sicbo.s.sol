@@ -3,10 +3,9 @@ pragma solidity ^0.8.23;
 
 import "./Migrate.s.sol";
 import {SicBo} from "src/SicBo.sol";
-import {IQRNGReceiver} from "src/utils/QRNGReceiver.sol";
 
 contract SicboDeployer is BaseMigrate {
-  function run() public  {
+  function run() public {
     deploySicbo();
     // deployContract("SicBo.sol:SicBo", abi.encode());
 
@@ -25,10 +24,7 @@ contract SicboDeployer is BaseMigrate {
       "Sicbo.sol:Sicbo",
       abi.encode(
         sibo,
-        0x6238772544f029ecaBfDED4300f13A3c4FE84E1D,
-        0x692760ECC4C283949d55036279fFf9F594d10b4A,
-        0x7f5AF7a37a33898544717AAa6c35c111dCe95b28, 
-        0x9877ec98695c139310480b4323b9d474d48ec4595560348a2341218670f7fbc2,
+        0x5498BB86BC934c8D34FDA08E81D444153d0D06aD,
         300,
         1_000_000_000_000_000_000,
         60,

@@ -3,14 +3,14 @@ pragma solidity 0.8.24;
 
 // forgefmt: disable-start
 import {ISicBo} from "src/ISicBo.sol";
+import {Consumer} from "src/utils/Consumer.sol";
 import {Currency} from "src/libraries/LibCurrency.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
-import {IQRNGReceiver, QRNGReceiver} from "src/utils/QRNGReceiver.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 // forgefmt: disable-end
 
-contract SicBo is ISicBo, Pausable, ReentrancyGuard, QRNGReceiver, Ownable {
+contract SicBo is ISicBo, Pausable, ReentrancyGuard, Consumer, Ownable {
   Currency currency;
   bool public genesisStartOnce; // default false;
   uint256 public currentEpoch;
@@ -24,26 +24,12 @@ contract SicBo is ISicBo, Pausable, ReentrancyGuard, QRNGReceiver, Ownable {
 
   constructor(
     Currency currency_,
-    address airnode_,
-    address sponsor_,
-    address airnodeRrp_,
-    bytes32 endpointIdUint256Array_,
+    address aggregator_,
     uint256 treasuryFee_,
     uint256 minBetAmount_,
     uint256 bufferSeconds_,
     uint256 intervalSeconds_
-  )
-    Ownable(_msgSender())
-    QRNGReceiver(
-      IQRNGReceiver.QRNGSettings({
-        size: 3,
-        airnode: airnode_,
-        airnodeRrp: airnodeRrp_,
-        sponsorWallet: sponsor_,
-        endpointIdUint256Array: endpointIdUint256Array_
-      })
-    )
-  {
+  ) Ownable(_msgSender()) Consumer(aggregator_) {
     currency = currency_;
     sbSettings = ISicBo.SicBoSettings({
       treasuryFee: treasuryFee_,
@@ -83,7 +69,7 @@ contract SicBo is ISicBo, Pausable, ReentrancyGuard, QRNGReceiver, Ownable {
   function claimable(uint256 epoch_, address user_) public view returns (bool) {
     BetInfo memory betInfo = ledger[epoch_][user_];
     Round memory round = rounds[epoch_];
-    return round.requestedQRNG && betInfo.amount != 0 && !betInfo.claimed
+    return round.requestedPriceFeed && betInfo.amount != 0 && !betInfo.claimed
       && (betInfo.position == Position.Low || betInfo.position == Position.High);
   }
 
@@ -92,13 +78,10 @@ contract SicBo is ISicBo, Pausable, ReentrancyGuard, QRNGReceiver, Ownable {
     BetInfo memory betInfo = ledger[epoch_][user_];
     Round memory round = rounds[epoch_];
     return
-      !round.requestedQRNG && !betInfo.claimed && block.timestamp > round.closeAt + bufferSeconds && betInfo.amount != 0;
+      !round.requestedPriceFeed && !betInfo.claimed && block.timestamp > round.closeAt + bufferSeconds && betInfo.amount != 0;
   }
 
-  // WRITE
-  function configQRNGSettings(IQRNGReceiver.QRNGSettings memory settings_) external onlyOwner {
-    _qrngConfigSettings(settings_);
-  }
+  // WRITES
   // 3 dices -> 4 -> 10
   function betLow(uint256 epoch_, uint256 amount_) external whenNotPaused nonReentrant {
     require(epoch_ == currentEpoch, "Bet is too early/late");
@@ -154,7 +137,7 @@ contract SicBo is ISicBo, Pausable, ReentrancyGuard, QRNGReceiver, Ownable {
 
       uint256 addedReward = 0;
 
-      if (rounds[epochs_[i]].requestedQRNG) {
+      if (rounds[epochs_[i]].requestedPriceFeed) {
         require(claimable(epochs_[i], _msgSender()), "Not eligible for claim");
         Round memory round = rounds[epochs_[i]];
         addedReward = (ledger[epochs_[i]][_msgSender()].amount * round.rewardAmount) / round.rewardBaseCalAmount;
@@ -174,22 +157,10 @@ contract SicBo is ISicBo, Pausable, ReentrancyGuard, QRNGReceiver, Ownable {
     }
   }
 
-  function resolveRound() external whenNotPaused onlyOwner {
-    require(block.timestamp > rounds[currentEpoch].closeAt, "Can only run after closeAt");
-    _requestRandom();
-  }
-
-  function executeRound(bytes32 requestId_, uint256[] memory response_)
-    public
-    whenNotPaused
-    onlyOwner
-    onlyFulfilled(requestId_)
-  {
+  function executeRound() public whenNotPaused onlyOwner {
     require(genesisStartOnce, "Can only run after genesisStartRound is triggered");
 
-    uint256[] memory prefixed = _preFormatRandomWord(response_);
-
-    _safeEndRound(currentEpoch, requestId_, prefixed);
+    _safeEndRound(currentEpoch);
     _calculateRewards(currentEpoch);
 
     currentEpoch = currentEpoch + 1;
@@ -201,6 +172,11 @@ contract SicBo is ISicBo, Pausable, ReentrancyGuard, QRNGReceiver, Ownable {
     currentEpoch = currentEpoch + 1;
     _startRound(currentEpoch);
     genesisStartOnce = true;
+  }
+
+  function configSetting(SicBoSettings calldata settings_) external onlyOwner {
+    sbSettings = settings_;
+    emit SettingsConfigured(_msgSender());
   }
 
   function pause() external whenNotPaused onlyOwner {
@@ -229,11 +205,11 @@ contract SicBo is ISicBo, Pausable, ReentrancyGuard, QRNGReceiver, Ownable {
     uint256 rewardAmount;
     uint256 treasuryFee = sbSettings.treasuryFee;
 
-    if (_isLow(round.closeTotalScore)) {
+    if (_isLow(round.diceResult.totalScore)) {
       rewardBaseCalAmount = round.lowAmount;
       treasuryAmt = (round.totalAmount * treasuryFee) / 10_000;
       rewardAmount = round.totalAmount - treasuryAmt;
-    } else if (_isHigh(round.closeTotalScore)) {
+    } else if (_isHigh(round.diceResult.totalScore)) {
       rewardBaseCalAmount = round.highAmount;
       treasuryAmt = (round.totalAmount * treasuryFee) / 10_000;
       rewardAmount = round.totalAmount - treasuryAmt;
@@ -250,21 +226,26 @@ contract SicBo is ISicBo, Pausable, ReentrancyGuard, QRNGReceiver, Ownable {
     emit RewardsCalculated(epoch_, rewardBaseCalAmount, rewardAmount, treasuryAmt);
   }
 
-  function _safeEndRound(uint256 epoch_, bytes32 requestId_, uint256[] memory dicesResult_) internal {
+  function _safeEndRound(uint256 epoch_) internal {
     uint256 bufferSeconds = sbSettings.bufferSeconds;
 
     require(rounds[epoch_].closeAt != 0, "Can only end round after round has closed");
     require(block.timestamp >= rounds[epoch_].closeAt, "Can only end round after closeAt");
     require(block.timestamp <= rounds[epoch_].closeAt + bufferSeconds, "Can only end round within bufferSeconds");
 
-    uint256 totalScore = _calcTotalScore(dicesResult_);
+    (uint256 roundId, uint256 totalScore, uint256[] memory dices) = _rollDices(epoch_);
 
-    rounds[epoch_].requestId = requestId_;
-    rounds[epoch_].closeDicesResult = dicesResult_;
-    rounds[epoch_].closeTotalScore = totalScore;
-    rounds[epoch_].requestedQRNG = true;
+    Round storage round = rounds[epoch_];
 
-    emit EndRound(epoch_, requestId_, totalScore);
+    round.roundId = roundId;
+    round.requestedPriceFeed = true;
+    round.diceResult = DiceResult({
+      rollAt: block.timestamp,
+      totalScore: totalScore,
+      dices: dices
+    });
+
+    emit EndRound(epoch_, roundId, totalScore);
   }
 
   function _safeStartRound(uint256 epoch_) internal {
@@ -277,20 +258,10 @@ contract SicBo is ISicBo, Pausable, ReentrancyGuard, QRNGReceiver, Ownable {
   function _startRound(uint256 epoch_) internal {
     uint256 intervalSeconds = sbSettings.intervalSeconds;
 
-    rounds[epoch_] = Round({
-      requestedQRNG: false,
-      epoch: epoch_,
-      startAt: block.timestamp,
-      closeAt: block.timestamp + intervalSeconds,
-      totalAmount: 0,
-      lowAmount: 0,
-      highAmount: 0,
-      rewardBaseCalAmount: 0,
-      rewardAmount: 0,
-      requestId: bytes32(0),
-      closeTotalScore: 0,
-      closeDicesResult: new uint256[](0)
-    });
+    Round storage round = rounds[epoch_];
+    round.epoch = epoch_;
+    round.startAt = block.timestamp;
+    round.closeAt = block.timestamp + intervalSeconds;
 
     emit StartRound(epoch_);
   }
@@ -300,11 +271,37 @@ contract SicBo is ISicBo, Pausable, ReentrancyGuard, QRNGReceiver, Ownable {
       && block.timestamp < rounds[epoch_].closeAt;
   }
 
-  function _calcTotalScore(uint256[] memory response_) internal pure returns (uint256 totalScore) {
-    for (uint256 i; i < response_.length;) {
-      totalScore += response_[i];
+  function _rollDices(uint256 epoch_)
+    internal
+    view
+    returns (uint256 roundId, uint256 totalScore, uint256[] memory dices)
+  {
+    uint256 avaxPrice;
+    dices = new uint256[](3);
+    Round storage round = rounds[epoch_];
+    (roundId, avaxPrice) = getLatestAnswer();
+
+    uint256 seed = uint256(
+      keccak256(
+        abi.encode(
+          roundId,
+          avaxPrice,
+          block.timestamp,
+          round.totalAmount,
+          round.lowAmount,
+          round.highAmount,
+          _msgSender(),
+          block.coinbase
+        )
+      )
+    );
+
+    for (uint256 i; i < dices.length;) {
+      uint256 dice = ((seed >> 32 * (i + 1)) % 6) + 1;
+      dices[i] = dice;
       unchecked {
         ++i;
+        totalScore += dice;
       }
     }
   }
@@ -322,20 +319,6 @@ contract SicBo is ISicBo, Pausable, ReentrancyGuard, QRNGReceiver, Ownable {
       isHigh = true;
     } else {
       isHigh = false;
-    }
-  }
-
-  function _preFormatRandomWord(uint256[] memory rawRandomWords)
-    internal
-    pure
-    returns (uint256[] memory formattedRandomWords)
-  {
-    formattedRandomWords = new uint256[](rawRandomWords.length);
-    for (uint256 i; i < rawRandomWords.length;) {
-      formattedRandomWords[i] = (rawRandomWords[i] % 6) + 1;
-      unchecked {
-        ++i;
-      }
     }
   }
 }

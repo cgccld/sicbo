@@ -13,19 +13,24 @@ interface ISicBo {
     bool claimed;
   }
 
+  struct DiceResult {
+    uint256 rollAt;
+    uint256 totalScore;
+    uint256[] dices;
+  }
+
   struct Round {
-    bool requestedQRNG;
     uint256 epoch;
     uint256 startAt;
     uint256 closeAt;
+    uint256 roundId;
     uint256 totalAmount;
     uint256 lowAmount;
     uint256 highAmount;
     uint256 rewardBaseCalAmount;
     uint256 rewardAmount;
-    bytes32 requestId;
-    uint256 closeTotalScore;
-    uint256[] closeDicesResult;
+    bool requestedPriceFeed;
+    DiceResult diceResult;
   }
 
   struct SicBoSettings {
@@ -42,7 +47,7 @@ interface ISicBo {
   event SettingsConfigured(address indexed by);
 
   event StartRound(uint256 indexed epoch);
-  event EndRound(uint256 indexed epoch, bytes32 indexed requestId, uint256 totalScore);
+  event EndRound(uint256 indexed epoch, uint256 indexed roundId, uint256 totalScore);
 
   event Pause(uint256 indexed epoch);
   event Unpause(uint256 indexed epoch);
