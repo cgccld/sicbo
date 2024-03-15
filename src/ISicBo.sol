@@ -14,19 +14,18 @@ interface ISicBo {
   }
 
   struct Round {
+    bool requestedQRNG;
     uint256 epoch;
     uint256 startAt;
-    uint256 lockAt;
     uint256 closeAt;
-    bytes32 requestId;
-    uint256[] closeDicesResult;
-    uint256 closeTotalScore;
     uint256 totalAmount;
     uint256 lowAmount;
     uint256 highAmount;
     uint256 rewardBaseCalAmount;
     uint256 rewardAmount;
-    bool requestedQRNG;
+    bytes32 requestId;
+    uint256 closeTotalScore;
+    uint256[] closeDicesResult;
   }
 
   struct SicBoSettings {
@@ -39,12 +38,6 @@ interface ISicBo {
   event BetLow(address indexed account, uint256 indexed epoch, uint256 amount);
   event BetHigh(address indexed account, uint256 indexed epoch, uint256 amount);
   event Claim(address indexed account, uint256 indexed epoch, uint256 amount);
-
-  // event NewProtocolFee(uint256 indexed epoch, uint256 protocolFee);
-  // event NewMinBetAmount(uint256 indexed epoch, uint256 minBetAmount);
-  // event NewBufferAndIntervalSeconds(
-  //   uint256 bufferSeconds, uint256 intervalSeconds
-  // );
 
   event SettingsConfigured(address indexed by);
 

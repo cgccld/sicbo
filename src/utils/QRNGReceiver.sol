@@ -20,6 +20,7 @@ interface IQRNGReceiver {
   struct QRNGSettings {
     uint32 size;
     address airnode;
+    address airnodeRrp;
     address sponsorWallet;
     bytes32 endpointIdUint256Array;
   }
@@ -31,8 +32,8 @@ abstract contract QRNGReceiver is IQRNGReceiver, RrpRequesterV0 {
   bytes32 public latestRequestId;
   bytes32[] public requestIds;
 
-  QRNGSettings private $qrngSettings;
-  mapping(bytes32 => RequestDetails) private $details;
+  QRNGSettings internal $qrngSettings;
+  mapping(bytes32 => RequestDetails) internal $details;
 
   modifier onlyRequested(bytes32 requestId_) {
     if (!_isRequested(requestId_)) {
@@ -48,7 +49,7 @@ abstract contract QRNGReceiver is IQRNGReceiver, RrpRequesterV0 {
     _;
   }
 
-  constructor(QRNGSettings memory settings_) RrpRequesterV0(settings_.airnode) {
+  constructor(QRNGSettings memory settings_) RrpRequesterV0(settings_.airnodeRrp) {
     _qrngConfigSettings(settings_);
   }
 

@@ -4,7 +4,6 @@ pragma solidity 0.8.24;
 // forgefmt: disable-start
 import {ISicBo} from "src/ISicBo.sol";
 import {Currency} from "src/libraries/LibCurrency.sol";
-// import {IConsumer, Consumer} from "src/utils/Consumer.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {IQRNGReceiver, QRNGReceiver} from "src/utils/QRNGReceiver.sol";
@@ -13,7 +12,6 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 
 contract SicBo is ISicBo, Pausable, ReentrancyGuard, QRNGReceiver, Ownable {
   Currency currency;
-
   bool public genesisStartOnce; // default false;
   uint256 public currentEpoch;
   uint256 public treasuryAmount;
@@ -28,6 +26,7 @@ contract SicBo is ISicBo, Pausable, ReentrancyGuard, QRNGReceiver, Ownable {
     Currency currency_,
     address airnode_,
     address sponsor_,
+    address airnodeRrp_,
     bytes32 endpointIdUint256Array_,
     uint256 treasuryFee_,
     uint256 minBetAmount_,
@@ -39,6 +38,7 @@ contract SicBo is ISicBo, Pausable, ReentrancyGuard, QRNGReceiver, Ownable {
       IQRNGReceiver.QRNGSettings({
         size: 3,
         airnode: airnode_,
+        airnodeRrp: airnodeRrp_,
         sponsorWallet: sponsor_,
         endpointIdUint256Array: endpointIdUint256Array_
       })
@@ -96,6 +96,9 @@ contract SicBo is ISicBo, Pausable, ReentrancyGuard, QRNGReceiver, Ownable {
   }
 
   // WRITE
+  function configQRNGSettings(IQRNGReceiver.QRNGSettings memory settings_) external onlyOwner {
+    _qrngConfigSettings(settings_);
+  }
   // 3 dices -> 4 -> 10
   function betLow(uint256 epoch_, uint256 amount_) external whenNotPaused nonReentrant {
     require(epoch_ == currentEpoch, "Bet is too early/late");
@@ -172,6 +175,7 @@ contract SicBo is ISicBo, Pausable, ReentrancyGuard, QRNGReceiver, Ownable {
   }
 
   function resolveRound() external whenNotPaused onlyOwner {
+    require(block.timestamp > rounds[currentEpoch].closeAt, "Can only run after closeAt");
     _requestRandom();
   }
 
@@ -217,10 +221,6 @@ contract SicBo is ISicBo, Pausable, ReentrancyGuard, QRNGReceiver, Ownable {
     emit TokenRecovery(Currency.unwrap(currency_), amount_);
   }
 
-  function _additionalHandler(bytes32 requestId_, uint256[] memory response_) internal override {
-    executeRound(requestId_, response_);
-  }
-
   function _calculateRewards(uint256 epoch_) internal {
     require(rounds[epoch_].rewardBaseCalAmount == 0 && rounds[epoch_].rewardAmount == 0, "Rewards calculated");
     Round storage round = rounds[epoch_];
@@ -253,16 +253,16 @@ contract SicBo is ISicBo, Pausable, ReentrancyGuard, QRNGReceiver, Ownable {
   function _safeEndRound(uint256 epoch_, bytes32 requestId_, uint256[] memory dicesResult_) internal {
     uint256 bufferSeconds = sbSettings.bufferSeconds;
 
-    require(rounds[epoch_].lockAt != 0, "Can only end round after round has locked");
-    require(block.timestamp >= rounds[epoch_].closeAt, "Can only end round after closeTimestamp");
+    require(rounds[epoch_].closeAt != 0, "Can only end round after round has closed");
+    require(block.timestamp >= rounds[epoch_].closeAt, "Can only end round after closeAt");
     require(block.timestamp <= rounds[epoch_].closeAt + bufferSeconds, "Can only end round within bufferSeconds");
 
     uint256 totalScore = _calcTotalScore(dicesResult_);
-    Round storage round = rounds[epoch_];
-    round.requestId = requestId_;
-    round.closeDicesResult = dicesResult_;
-    round.closeTotalScore = totalScore;
-    round.requestedQRNG = true;
+
+    rounds[epoch_].requestId = requestId_;
+    rounds[epoch_].closeDicesResult = dicesResult_;
+    rounds[epoch_].closeTotalScore = totalScore;
+    rounds[epoch_].requestedQRNG = true;
 
     emit EndRound(epoch_, requestId_, totalScore);
   }
@@ -270,25 +270,34 @@ contract SicBo is ISicBo, Pausable, ReentrancyGuard, QRNGReceiver, Ownable {
   function _safeStartRound(uint256 epoch_) internal {
     require(genesisStartOnce, "Can only run after genesisStartRound is triggered");
     require(rounds[epoch_ - 1].closeAt != 0, "Can only start round after round n-1 has ended");
-    require(block.timestamp >= rounds[epoch_ - 1].closeAt, "Can only start new round after round n-1 closeTimestamp");
+    require(block.timestamp >= rounds[epoch_ - 1].closeAt, "Can only start new round after round n-1 closeAt");
     _startRound(epoch_);
   }
 
   function _startRound(uint256 epoch_) internal {
     uint256 intervalSeconds = sbSettings.intervalSeconds;
-    Round storage round = rounds[epoch_];
-    round.startAt = block.timestamp;
-    round.lockAt = block.timestamp + intervalSeconds;
-    round.closeAt = block.timestamp + (2 * intervalSeconds);
-    round.epoch = epoch_;
-    round.totalAmount = 0;
+
+    rounds[epoch_] = Round({
+      requestedQRNG: false,
+      epoch: epoch_,
+      startAt: block.timestamp,
+      closeAt: block.timestamp + intervalSeconds,
+      totalAmount: 0,
+      lowAmount: 0,
+      highAmount: 0,
+      rewardBaseCalAmount: 0,
+      rewardAmount: 0,
+      requestId: bytes32(0),
+      closeTotalScore: 0,
+      closeDicesResult: new uint256[](0)
+    });
 
     emit StartRound(epoch_);
   }
 
   function _bettable(uint256 epoch_) internal view returns (bool) {
-    return rounds[epoch_].startAt != 0 && rounds[epoch_].lockAt != 0 && block.timestamp > rounds[epoch_].startAt
-      && block.timestamp < rounds[epoch_].lockAt;
+    return rounds[epoch_].startAt != 0 && rounds[epoch_].closeAt != 0 && block.timestamp > rounds[epoch_].startAt
+      && block.timestamp < rounds[epoch_].closeAt;
   }
 
   function _calcTotalScore(uint256[] memory response_) internal pure returns (uint256 totalScore) {
