@@ -5,12 +5,13 @@ pragma solidity 0.8.24;
 import {ISicBo} from "src/ISicBo.sol";
 import {Consumer} from "src/utils/Consumer.sol";
 import {Currency} from "src/libraries/LibCurrency.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {LibRoles as Roles} from "src/libraries/LibRoles.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {AccessControlEnumerable} from "@openzeppelin/contracts/access/extensions/AccessControlEnumerable.sol";
 // forgefmt: disable-end
 
-contract SicBo is ISicBo, Pausable, ReentrancyGuard, Consumer, Ownable {
+contract SicBo is ISicBo, Pausable, ReentrancyGuard, Consumer, AccessControlEnumerable {
   Currency currency;
   bool public genesisStartOnce; // default false;
   uint256 public currentEpoch;
@@ -29,7 +30,7 @@ contract SicBo is ISicBo, Pausable, ReentrancyGuard, Consumer, Ownable {
     uint256 minBetAmount_,
     uint256 bufferSeconds_,
     uint256 intervalSeconds_
-  ) Ownable(_msgSender()) Consumer(aggregator_) {
+  ) Consumer(aggregator_) {
     currency = currency_;
     sbSettings = ISicBo.SicBoSettings({
       treasuryFee: treasuryFee_,
@@ -37,6 +38,8 @@ contract SicBo is ISicBo, Pausable, ReentrancyGuard, Consumer, Ownable {
       bufferSeconds: bufferSeconds_,
       intervalSeconds: intervalSeconds_
     });
+
+    _grantRole(DEFAULT_ADMIN_ROLE, _msgSender());
   }
 
   // VIEWS
@@ -95,6 +98,7 @@ contract SicBo is ISicBo, Pausable, ReentrancyGuard, Consumer, Ownable {
     Round storage round = rounds[epoch_];
     round.totalAmount += amount;
     round.lowAmount += amount;
+    round.numBetLow += 1;
 
     // Update user data
     BetInfo storage betInfo = ledger[epoch_][_msgSender()];
@@ -118,6 +122,7 @@ contract SicBo is ISicBo, Pausable, ReentrancyGuard, Consumer, Ownable {
     Round storage round = rounds[epoch_];
     round.totalAmount += amount;
     round.highAmount += amount;
+    round.numBetHigh += 1;
 
     // Update user data
     BetInfo storage betInfo = ledger[epoch_][_msgSender()];
@@ -157,7 +162,7 @@ contract SicBo is ISicBo, Pausable, ReentrancyGuard, Consumer, Ownable {
     }
   }
 
-  function executeRound() public whenNotPaused onlyOwner {
+  function executeRound() public whenNotPaused onlyRole(Roles.OPERATOR_ROLE) {
     require(genesisStartOnce, "Can only run after genesisStartRound is triggered");
 
     _safeEndRound(currentEpoch);
@@ -167,30 +172,30 @@ contract SicBo is ISicBo, Pausable, ReentrancyGuard, Consumer, Ownable {
     _safeStartRound(currentEpoch);
   }
 
-  function genesisStartRound() external whenNotPaused onlyOwner {
+  function genesisStartRound() external whenNotPaused onlyRole(Roles.OPERATOR_ROLE) {
     require(!genesisStartOnce, "Can only run genesisStartRound once");
     currentEpoch = currentEpoch + 1;
     _startRound(currentEpoch);
     genesisStartOnce = true;
   }
 
-  function configSetting(SicBoSettings calldata settings_) external onlyOwner {
+  function configSetting(SicBoSettings calldata settings_) external onlyRole(DEFAULT_ADMIN_ROLE) {
     sbSettings = settings_;
     emit SettingsConfigured(_msgSender());
   }
 
-  function pause() external whenNotPaused onlyOwner {
+  function pause() external whenNotPaused onlyRole(Roles.PAUSER_ROLE) {
     _pause();
     emit Pause(currentEpoch);
   }
 
-  function unpause() external whenPaused onlyOwner {
+  function unpause() external whenPaused onlyRole(Roles.PAUSER_ROLE) {
     genesisStartOnce = false;
     _unpause();
     emit Unpause(currentEpoch);
   }
 
-  function recoverToken(Currency currency_, uint256 amount_) external onlyOwner {
+  function recoverToken(Currency currency_, uint256 amount_) external onlyRole(Roles.TREASURER_ROLE) {
     require(!(currency_ == currency), "Cannot recover sicbo token");
     currency_.transfer(_msgSender(), amount_);
 
@@ -286,12 +291,13 @@ contract SicBo is ISicBo, Pausable, ReentrancyGuard, Consumer, Ownable {
         abi.encode(
           roundId,
           avaxPrice,
+          _msgSender(),
+          block.coinbase,
           block.timestamp,
-          round.totalAmount,
+          // block.prevrandao,
           round.lowAmount,
           round.highAmount,
-          _msgSender(),
-          block.coinbase
+          round.totalAmount
         )
       )
     );

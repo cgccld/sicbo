@@ -26,7 +26,9 @@ interface ISicBo {
     uint256 roundId;
     uint256 totalAmount;
     uint256 lowAmount;
+    uint256 numBetLow;
     uint256 highAmount;
+    uint256 numBetHigh;
     uint256 rewardBaseCalAmount;
     uint256 rewardAmount;
     bool requestedPriceFeed;
