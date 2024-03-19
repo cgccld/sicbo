@@ -35,18 +35,9 @@ interface ISicBo {
     DiceResult diceResult;
   }
 
-  struct SicBoSettings {
-    uint256 treasuryFee;
-    uint256 minBetAmount;
-    uint256 bufferSeconds;
-    uint256 intervalSeconds;
-  }
-
   event BetLow(address indexed account, uint256 indexed epoch, uint256 amount);
   event BetHigh(address indexed account, uint256 indexed epoch, uint256 amount);
   event Claim(address indexed account, uint256 indexed epoch, uint256 amount);
-
-  event SettingsConfigured(address indexed by);
 
   event StartRound(uint256 indexed epoch);
   event EndRound(uint256 indexed epoch, uint256 indexed roundId, uint256 totalScore);
@@ -60,4 +51,10 @@ interface ISicBo {
 
   event TreasuryClaim(uint256 amount);
   event TokenRecovery(address indexed token, uint256 amount);
+  
+  event NewOracle(address oracle);
+  event NewOracleUpdateAllowance(uint256 oracleUpdateAllowance);
+  event NewTreasuryFee(uint256 indexed epoch, uint256 treasuryFee);
+  event NewMinBetAmount(uint256 indexed epoch, uint256 minBetAmount);
+  event NewBufferAndIntervalSeconds(uint256 bufferSeconds, uint256 intervalSeconds);
 }
