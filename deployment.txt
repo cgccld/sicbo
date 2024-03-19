@@ -1,0 +1,21 @@
+≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋
+| FUJI:                                                                                             |
+| - ChainId: 43113                                                                                  |
+| - Contracts address:                                                                              |          
+|   + PAMP: https://testnet.snowtrace.io/token/0x116c3e2C25E3BC99F36e130cf267c372B82c3d36           |
+|   + SICBO: https://testnet.snowtrace.io/address/0x3ce3Aa97d6980c539586B3D96D01C46F27a6A421        |
+| - Roles:                                                                                          |
+|   + 0x203f00E1e4906BaB4BF4b3acBA3cB2cfB95F9C84 (DEFAULT_ADMIN_ROLE, OPERATOR_ROLE, TREASURER_ROLE)|
+|   + 0xeeC5915A21DA64a58DE1e9a3D7dd7b8Bff775cF0 (OPERATOR_ROLE)                                    |
+| - Demo website:                                                                                   |
+≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋
+| AVALANCHE:                                                                                        | 
+| - ChainId: 43114                                                                                  |
+| - Contracts:                                                                                      |
+|   + PAMP: https://snowtrace.io/token/                                                             |
+|   + SICBO: https://snowtrace.io/address/                                                          |
+| - Roles:                                                                                          |
+|   +                                                                                               |
+|   +                                                                                               |
+| - Demo website:                                                                                   |
+≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋-≋

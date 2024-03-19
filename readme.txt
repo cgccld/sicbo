@@ -1,16 +1,4 @@
-Sicbo deployment for demo purposes
-
-
-COMPARATIONS
-
-Chainlink VRF
-- Expensive 
-- Can configure the callback gas limit, num of block confirmations
-
-API3 QRNG 
-- Cheaper
-- Only able to configure the size of array random number generated
-
+『P』『A』『M』『P』 『D』『A』 『S』『H』『*』『T』 『C』『O』『I』『N』
 
 INSTALLATION
 
@@ -45,7 +33,7 @@ $ forge verify-contract \
         0xE406c1E238e17C4c854571EC48dBAD169579b381 \
         ./src/v0/Sicbo.sol:Sicbo \
         --chain fuji \
-        --etherscan-api-key $SNOWTRACE_SCAN \
+        --etherscan-api-key $SNOWTRACE_KEY \
         --watch \
 
 
@@ -54,7 +42,7 @@ SIMULATION
 $ source .env
 $ forge script script/Sicbo.s.sol \
         -f fuji \
-        --etherscan-api-key $SNOWTRACE_SCAN \
+        --etherscan-api-key $SNOWTRACE_KEY \
         --private-key $DEPLOYER_KEY \
         -vv
 

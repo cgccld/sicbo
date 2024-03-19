@@ -2,15 +2,16 @@
 pragma solidity ^0.8.23;
 
 import "./Migrate.s.sol";
-import {SicBo} from "src/SicBo.sol";
+import {SicBo} from "../src/SicBo.sol";
+import {Pampda} from "../src/Pampda.sol";
 
 contract SicboDeployer is BaseMigrate {
   function run() public {
-    deploySicbo();
+    deploy();
   }
 
-  function deploySicbo() public broadcast {
-    address sibo = 0x2F08eC295cF70fD1D4985cEC1cDf756d8495a1de;
+  function deploy() public broadcast {
+    address sibo = deployContract("Pampda.sol:Pampda", abi.encode("Pampda","$PAMP"));
     deployContract(
       "Sicbo.sol:Sicbo",
       abi.encode(
