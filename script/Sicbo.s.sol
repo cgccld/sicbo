@@ -22,14 +22,7 @@ contract SicboDeployer is BaseMigrate {
     address sibo = 0x2F08eC295cF70fD1D4985cEC1cDf756d8495a1de;
     address sicbo = deployContract(
       "Sicbo.sol:Sicbo",
-      abi.encode(
-        sibo,
-        0x5498BB86BC934c8D34FDA08E81D444153d0D06aD,
-        300,
-        1_000_000_000_000_000_000,
-        60,
-        180
-      )
+      abi.encode(sibo, 0x5498BB86BC934c8D34FDA08E81D444153d0D06aD, 300, 1_000_000_000_000_000_000, 60, 180)
     );
   }
 }

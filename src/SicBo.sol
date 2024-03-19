@@ -42,6 +42,12 @@ contract SicBo is ISicBo, Pausable, ReentrancyGuard, Consumer, AccessControlEnum
     _grantRole(DEFAULT_ADMIN_ROLE, _msgSender());
   }
 
+  modifier onlyEOA() {
+    require(!_isContract(_msgSender()), "Contract not allowed");
+    require(_msgSender() != tx.origin, "Proxy contract not allowed");
+    _;
+  }
+
   // VIEWS
   function getUserRounds(address user, uint256 cursor, uint256 size)
     external
@@ -80,13 +86,13 @@ contract SicBo is ISicBo, Pausable, ReentrancyGuard, Consumer, AccessControlEnum
     uint256 bufferSeconds = sbSettings.bufferSeconds;
     BetInfo memory betInfo = ledger[epoch_][user_];
     Round memory round = rounds[epoch_];
-    return
-      !round.requestedPriceFeed && !betInfo.claimed && block.timestamp > round.closeAt + bufferSeconds && betInfo.amount != 0;
+    return !round.requestedPriceFeed && !betInfo.claimed && block.timestamp > round.closeAt + bufferSeconds
+      && betInfo.amount != 0;
   }
 
   // WRITES
   // 3 dices -> 4 -> 10
-  function betLow(uint256 epoch_, uint256 amount_) external whenNotPaused nonReentrant {
+  function betLow(uint256 epoch_, uint256 amount_) external whenNotPaused nonReentrant onlyEOA {
     require(epoch_ == currentEpoch, "Bet is too early/late");
     require(_bettable(epoch_), "Round is not bettable");
     require(amount_ >= sbSettings.minBetAmount, "Bet amount must be greater than minBetAmount");
@@ -110,7 +116,7 @@ contract SicBo is ISicBo, Pausable, ReentrancyGuard, Consumer, AccessControlEnum
   }
 
   // 3 dices -> 11 -> 17
-  function betHigh(uint256 epoch_, uint256 amount_) external whenNotPaused nonReentrant {
+  function betHigh(uint256 epoch_, uint256 amount_) external whenNotPaused nonReentrant onlyEOA {
     require(epoch_ == currentEpoch, "Bet is too early/late");
     require(_bettable(epoch_), "Round is not bettable");
     require(amount_ >= sbSettings.minBetAmount, "Bet amount must be greater than minBetAmount");
@@ -133,7 +139,7 @@ contract SicBo is ISicBo, Pausable, ReentrancyGuard, Consumer, AccessControlEnum
     emit BetHigh(_msgSender(), epoch_, amount);
   }
 
-  function claim(uint256[] calldata epochs_) external nonReentrant {
+  function claim(uint256[] calldata epochs_) external nonReentrant onlyEOA {
     uint256 reward;
 
     for (uint256 i; i < epochs_.length; ++i) {
@@ -244,11 +250,7 @@ contract SicBo is ISicBo, Pausable, ReentrancyGuard, Consumer, AccessControlEnum
 
     round.roundId = roundId;
     round.requestedPriceFeed = true;
-    round.diceResult = DiceResult({
-      rollAt: block.timestamp,
-      totalScore: totalScore,
-      dices: dices
-    });
+    round.diceResult = DiceResult({rollAt: block.timestamp, totalScore: totalScore, dices: dices});
 
     emit EndRound(epoch_, roundId, totalScore);
   }
@@ -326,5 +328,13 @@ contract SicBo is ISicBo, Pausable, ReentrancyGuard, Consumer, AccessControlEnum
     } else {
       isHigh = false;
     }
+  }
+
+  function _isContract(address account) internal view returns (bool isContract) {
+    uint256 size;
+    assembly {
+      size := extcodesize(account)
+    }
+    isContract = size > 0;
   }
 }

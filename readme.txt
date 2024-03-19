@@ -34,7 +34,7 @@ DEPLOYMENT
 $ source .env
 $ forge script script/Sicbo.s.sol \
         -f fuji \
-        --etherscan-api-key $SNOWTRACE_SCAN \
+        --etherscan-api-key $SNOWTRACE_KEY \
         --private-key $DEPLOYER_KEY \
         --broadcast --verify -vv
 

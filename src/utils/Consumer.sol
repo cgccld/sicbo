@@ -14,8 +14,10 @@ abstract contract Consumer {
     (
       uint80 roundID,
       int256 answer,
-      /*uint startedAt*/,
-      /*uint256 timeStamp*/,
+      /*uint startedAt*/
+      ,
+      /*uint256 timeStamp*/
+      ,
       /*uint80 answeredInRound*/
     ) = dataFeed.latestRoundData();
 
