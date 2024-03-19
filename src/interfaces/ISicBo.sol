@@ -13,43 +13,34 @@ interface ISicBo {
     bool claimed;
   }
 
+  struct DiceResult {
+    uint256 rollAt;
+    uint256 totalScore;
+    uint256[] dices;
+  }
+
   struct Round {
     uint256 epoch;
     uint256 startAt;
-    uint256 lockAt;
     uint256 closeAt;
-    uint256 requestId;
-    uint256[] closeDicesResult;
-    uint256 closeTotalScore;
+    uint256 roundId;
     uint256 totalAmount;
     uint256 lowAmount;
+    uint256 numBetLow;
     uint256 highAmount;
+    uint256 numBetHigh;
     uint256 rewardBaseCalAmount;
     uint256 rewardAmount;
-    bool requestedVRF;
-  }
-
-  struct SicBoSettings {
-    uint256 treasuryFee;
-    uint256 minBetAmount;
-    uint256 bufferSeconds;
-    uint256 intervalSeconds;
+    bool requestedPriceFeed;
+    DiceResult diceResult;
   }
 
   event BetLow(address indexed account, uint256 indexed epoch, uint256 amount);
   event BetHigh(address indexed account, uint256 indexed epoch, uint256 amount);
   event Claim(address indexed account, uint256 indexed epoch, uint256 amount);
 
-  // event NewProtocolFee(uint256 indexed epoch, uint256 protocolFee);
-  // event NewMinBetAmount(uint256 indexed epoch, uint256 minBetAmount);
-  // event NewBufferAndIntervalSeconds(
-  //   uint256 bufferSeconds, uint256 intervalSeconds
-  // );
-
-  event SettingsConfigured(address indexed by);
-
   event StartRound(uint256 indexed epoch);
-  event EndRound(uint256 indexed epoch, uint256 indexed requestId, uint256 totalScore);
+  event EndRound(uint256 indexed epoch, uint256 indexed roundId, uint256 totalScore);
 
   event Pause(uint256 indexed epoch);
   event Unpause(uint256 indexed epoch);
@@ -60,4 +51,10 @@ interface ISicBo {
 
   event TreasuryClaim(uint256 amount);
   event TokenRecovery(address indexed token, uint256 amount);
+  
+  event NewOracle(address oracle);
+  event NewOracleUpdateAllowance(uint256 oracleUpdateAllowance);
+  event NewTreasuryFee(uint256 indexed epoch, uint256 treasuryFee);
+  event NewMinBetAmount(uint256 indexed epoch, uint256 minBetAmount);
+  event NewBufferAndIntervalSeconds(uint256 bufferSeconds, uint256 intervalSeconds);
 }

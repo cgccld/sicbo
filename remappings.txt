@@ -7,3 +7,4 @@ forge-std/=lib/forge-std/src/
 @kit/=lib/minimal-deployment-kit/script/
 openzeppelin-contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/
 openzeppelin-contracts/=lib/openzeppelin-contracts/
+@api3/=lib/airnode/packages/airnode-protocol/contracts/

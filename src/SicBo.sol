@@ -2,59 +2,74 @@
 pragma solidity 0.8.24;
 
 // forgefmt: disable-start
-import {ISicBo} from "src/ISicBo.sol";
+import {ISicBo} from "src/interfaces/ISicBo.sol";
 import {Currency} from "src/libraries/LibCurrency.sol";
-import {IConsumer, Consumer} from "src/utils/Consumer.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {SicBoErrors} from "src/interfaces/SicBoErrors.sol";
+import {LibRoles as Roles} from "src/libraries/LibRoles.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {AggregatorV3Interface} from "chainlink/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
+import {AccessControlEnumerable} from "@openzeppelin/contracts/access/extensions/AccessControlEnumerable.sol";
 // forgefmt: disable-end
 
-contract SicBo is ISicBo, Pausable, ReentrancyGuard, Consumer, Ownable {
+contract SicBo is ISicBo, SicBoErrors, Pausable, ReentrancyGuard, AccessControlEnumerable {
   Currency currency;
+  AggregatorV3Interface public oracle;
 
   bool public genesisStartOnce; // default false;
-  uint256 public currentEpoch;
-  uint256 public treasuryAmount;
 
-  SicBoSettings public sbSettings;
+  uint256 public bufferSeconds; // number of seconds for valid execution of a SicBo round
+  uint256 public intervalSeconds; // interval in seconds between two SicBo rounds
 
+  uint256 public minBetAmount; // minimum betting amount (denominated in wei)
+  uint256 public treasuryFee; // treasury rate (e.g. 200 = 2%, 150 = 1.50%)
+  uint256 public treasuryAmount; // treasury amount that was not claimed
+
+  uint256 public currentEpoch; // current epoch for SicBo round
+
+  uint256 public oracleLatestRoundId; // converted from uint80 (Chainlink)
+  uint256 public oracleUpdateAllowance; // seconds
+
+  uint256 public constant MAX_TREASURY_FEE = 1000; // 10%
+
+  mapping(uint256 => mapping(address => BetInfo)) public ledger;
   mapping(uint256 => Round) public rounds;
   mapping(address => uint256[]) public userRounds;
-  mapping(uint256 => mapping(address => BetInfo)) public ledger;
 
   constructor(
-    bytes32 keyHash_,
     Currency currency_,
-    address coordinator_,
-    uint256 treasuryFee_,
-    uint256 minBetAmount_,
-    uint64 subscriptionId_,
+    address oracleAddress_,
+    address adminAddress_,
+    address operatorAddress_,
+    uint256 intervalSeconds_,
     uint256 bufferSeconds_,
-    uint256 intervalSeconds_
-  )
-    Ownable(_msgSender())
-    Consumer(
-      IConsumer.ConsumerSettings({
-        numWords: 3,
-        numConfirms: 3,
-        gasLimit: 100_000,
-        keyHash: keyHash_,
-        subsId: subscriptionId_,
-        coordinator: coordinator_
-      })
-    )
-  {
+    uint256 minBetAmount_,
+    uint256 oracleUpdateAllowance_,
+    uint256 treasuryFee_
+  ) {
     currency = currency_;
-    sbSettings = ISicBo.SicBoSettings({
-      treasuryFee: treasuryFee_,
-      minBetAmount: minBetAmount_,
-      bufferSeconds: bufferSeconds_,
-      intervalSeconds: intervalSeconds_
-    });
+    treasuryFee = treasuryFee_;
+    minBetAmount = minBetAmount_;
+    bufferSeconds = bufferSeconds_;
+    intervalSeconds = intervalSeconds_;
+    oracle = AggregatorV3Interface(oracleAddress_);
+    oracleUpdateAllowance = oracleUpdateAllowance_;
+
+    _grantRole(DEFAULT_ADMIN_ROLE, adminAddress_);
+    _grantRole(Roles.OPERATOR_ROLE, adminAddress_);
+    _grantRole(Roles.TREASURER_ROLE, adminAddress_);
+
+    _grantRole(Roles.OPERATOR_ROLE, operatorAddress_);
   }
 
-  // VIEWS
+  modifier onlyEOA() {
+    address sender = _msgSender();
+    if (_isContract(sender) || sender != tx.origin) {
+      revert SicBo__ProxyUnallowed();
+    }
+    _;
+  }
+
   function getUserRounds(address user, uint256 cursor, uint256 size)
     external
     view
@@ -84,87 +99,122 @@ contract SicBo is ISicBo, Pausable, ReentrancyGuard, Consumer, Ownable {
   function claimable(uint256 epoch_, address user_) public view returns (bool) {
     BetInfo memory betInfo = ledger[epoch_][user_];
     Round memory round = rounds[epoch_];
-    return round.requestedVRF && betInfo.amount != 0 && !betInfo.claimed
-      && (betInfo.position == Position.Low || betInfo.position == Position.High);
+    
+    return (
+      round.requestedPriceFeed &&
+      betInfo.amount != 0 &&
+      !betInfo.claimed &&
+      (betInfo.position == Position.Low || betInfo.position == Position.High)
+    );
   }
 
   function refundable(uint256 epoch_, address user_) public view returns (bool) {
-    uint256 bufferSeconds = sbSettings.bufferSeconds;
     BetInfo memory betInfo = ledger[epoch_][user_];
     Round memory round = rounds[epoch_];
-    return
-      !round.requestedVRF && !betInfo.claimed && block.timestamp > round.closeAt + bufferSeconds && betInfo.amount != 0;
+    
+    return (
+      !round.requestedPriceFeed &&
+      !betInfo.claimed &&
+      block.timestamp > round.closeAt + bufferSeconds &&
+      betInfo.amount != 0
+    );
   }
 
-  // WRITE
-  // 3 dices -> 4 -> 10
-  function betLow(uint256 epoch_, uint256 amount_) external whenNotPaused nonReentrant {
-    require(epoch_ == currentEpoch, "Bet is too early/late");
-    require(_bettable(epoch_), "Round is not bettable");
-    require(amount_ >= sbSettings.minBetAmount, "Bet amount must be greater than minBetAmount");
-    require(ledger[epoch_][_msgSender()].amount == 0, "Can only bet once per round");
-
-    currency.receiveFrom(_msgSender(), amount_);
-    // Update round data
+  function betLow(uint256 epoch_, uint256 amount_) external whenNotPaused nonReentrant onlyEOA {
+    uint256 epoch = epoch_;
     uint256 amount = amount_;
-    Round storage round = rounds[epoch_];
+    address sender = _msgSender();
+
+    if (epoch != currentEpoch || !_bettable(epoch)) {
+      revert SicBo__RoundNotBettable();
+    }
+    if (amount < minBetAmount) {
+      revert SicBo__BetAmountTooLow();
+    }
+    if (ledger[epoch][sender].amount != 0) {
+      revert SicBo__AlreadyBet();
+    }
+
+    currency.receiveFrom(sender, amount);
+    // Update round data
+    Round storage round = rounds[epoch];
     round.totalAmount += amount;
     round.lowAmount += amount;
+    round.numBetLow += 1;
 
     // Update user data
-    BetInfo storage betInfo = ledger[epoch_][_msgSender()];
+    BetInfo storage betInfo = ledger[epoch][sender];
     betInfo.position = Position.Low;
     betInfo.amount = amount;
-    userRounds[_msgSender()].push(epoch_);
+    userRounds[sender].push(epoch);
 
-    emit BetLow(_msgSender(), epoch_, amount);
+    emit BetLow(sender, epoch, amount);
   }
 
-  // 3 dices -> 11 -> 17
-  function betHigh(uint256 epoch_, uint256 amount_) external whenNotPaused nonReentrant {
-    require(epoch_ == currentEpoch, "Bet is too early/late");
-    require(_bettable(epoch_), "Round is not bettable");
-    require(amount_ >= sbSettings.minBetAmount, "Bet amount must be greater than minBetAmount");
-    require(ledger[epoch_][_msgSender()].amount == 0, "Can only bet once per round");
-
-    currency.receiveFrom(_msgSender(), amount_);
-    // Update round data
+  function betHigh(uint256 epoch_, uint256 amount_) external whenNotPaused nonReentrant onlyEOA {
+    uint256 epoch = epoch_;
     uint256 amount = amount_;
-    Round storage round = rounds[epoch_];
+    address sender = _msgSender();
+
+    if (epoch != currentEpoch || !_bettable(epoch)) {
+      revert SicBo__RoundNotBettable();
+    }
+    if (amount < minBetAmount) {
+      revert SicBo__BetAmountTooLow();
+    }
+    if (ledger[epoch][sender].amount != 0) {
+      revert SicBo__AlreadyBet();
+    }
+
+    currency.receiveFrom(sender, amount);
+    // Update round data
+    Round storage round = rounds[epoch];
     round.totalAmount += amount;
     round.highAmount += amount;
+    round.numBetHigh += 1;
 
     // Update user data
-    BetInfo storage betInfo = ledger[epoch_][_msgSender()];
+    BetInfo storage betInfo = ledger[epoch][sender];
     betInfo.position = Position.High;
     betInfo.amount = amount;
-    userRounds[_msgSender()].push(epoch_);
+    userRounds[sender].push(epoch);
 
-    emit BetHigh(_msgSender(), epoch_, amount);
+    emit BetHigh(sender, epoch, amount);
   }
 
-  function claim(uint256[] calldata epochs_) external nonReentrant {
+  function claim(uint256[] calldata epochs_) external nonReentrant onlyEOA {
+    uint256 epoch;
     uint256 reward;
+    address sender = _msgSender();
 
     for (uint256 i; i < epochs_.length; ++i) {
-      require(rounds[epochs_[i]].startAt != 0, "Round has not started");
-      require(block.timestamp > rounds[epochs_[i]].closeAt, "Round has not ended");
-
+      epoch = epochs_[i];
       uint256 addedReward = 0;
 
-      if (rounds[epochs_[i]].requestedVRF) {
-        require(claimable(epochs_[i], _msgSender()), "Not eligible for claim");
-        Round memory round = rounds[epochs_[i]];
-        addedReward = (ledger[epochs_[i]][_msgSender()].amount * round.rewardAmount) / round.rewardBaseCalAmount;
-      } else {
-        require(refundable(epochs_[i], _msgSender()), "Not eligible for refund");
-        addedReward = ledger[epochs_[i]][_msgSender()].amount;
+      if (rounds[epoch].startAt == 0) {
+        revert SicBo__RoundNotStarted(epoch);
+      }
+      if (block.timestamp <= rounds[epoch].closeAt) {
+        revert SicBo__RoundNotEnded(epoch);
       }
 
-      ledger[epochs_[i]][_msgSender()].claimed = true;
+      if (rounds[epoch].requestedPriceFeed) {
+        if (!claimable(epoch, sender)) {
+          revert SicBo__NotEligibleForClaim();
+        }
+        Round memory round = rounds[epoch];
+        addedReward = (ledger[epoch][sender].amount * round.rewardAmount) / round.rewardBaseCalAmount;
+      } else {
+        if (!refundable(epoch, sender)) {
+          revert SicBo__NotEligibleForRefund();
+        }
+        addedReward = ledger[epoch][sender].amount;
+      }
+
+      ledger[epoch][sender].claimed = true;
       reward += addedReward;
 
-      emit Claim(_msgSender(), epochs_[i], addedReward);
+      emit Claim(sender, epoch, addedReward);
     }
 
     if (reward > 0) {
@@ -172,83 +222,123 @@ contract SicBo is ISicBo, Pausable, ReentrancyGuard, Consumer, Ownable {
     }
   }
 
-  function resolveRound() external whenNotPaused onlyOwner {
-    _requestRandomWords();
-  }
+  function executeRound() public whenNotPaused onlyRole(Roles.OPERATOR_ROLE) {
+    if (!genesisStartOnce) {
+      revert SicBo__GenesisRoundNotTriggered();
+    }
 
-  // function executeRound() external whenNotPaused onlyOwner onlyFulfilled(latestRequestId) {
-  //   require(genesisStartOnce, "Can only run after genesisStartRound is triggered");
+    (uint80 currentRoundId, int256 price) = _getPriceFromOracle();
+    oracleLatestRoundId = uint256(currentRoundId);
 
-  //   uint256[] memory rawRandomWords = getRandomWords(latestRequestId);
-
-  //   uint256[] memory result = _preFormatRandomWord(rawRandomWords);
-
-  //   _safeEndRound(currentEpoch, latestRequestId, result);
-  //   _calculateRewards(currentEpoch);
-
-  //   currentEpoch = currentEpoch + 1;
-  //   _safeStartRound(currentEpoch);
-  // }
-
-  function executeRound(uint256 requestId_, uint256[] memory randomWords_)
-    public
-    whenNotPaused
-    onlyOwner
-    onlyFulfilled(requestId_)
-  {
-    require(genesisStartOnce, "Can only run after genesisStartRound is triggered");
-
-    uint256[] memory prefixed = _preFormatRandomWord(randomWords_);
-
-    _safeEndRound(currentEpoch, requestId_, prefixed);
+    _safeEndRound(currentEpoch, currentRoundId, price);
     _calculateRewards(currentEpoch);
-
-    currentEpoch = currentEpoch + 1;
+    unchecked {
+      currentEpoch = currentEpoch + 1;
+    }
     _safeStartRound(currentEpoch);
   }
 
-  function genesisStartRound() external whenNotPaused onlyOwner {
-    require(!genesisStartOnce, "Can only run genesisStartRound once");
+  function genesisStartRound() external whenNotPaused onlyRole(Roles.OPERATOR_ROLE) {
+    if (genesisStartOnce) {
+      revert SicBo__GenesisRoundAlreadyTriggered();
+    }
     currentEpoch = currentEpoch + 1;
     _startRound(currentEpoch);
     genesisStartOnce = true;
   }
 
-  function pause() external whenNotPaused onlyOwner {
+  function pause() external whenNotPaused onlyRole(Roles.OPERATOR_ROLE) {
     _pause();
     emit Pause(currentEpoch);
   }
 
-  function unpause() external whenPaused onlyOwner {
+  function unpause() external whenPaused onlyRole(Roles.OPERATOR_ROLE) {
     genesisStartOnce = false;
     _unpause();
     emit Unpause(currentEpoch);
   }
 
-  function recoverToken(Currency currency_, uint256 amount_) external onlyOwner {
-    require(!(currency_ == currency), "Cannot recover sicbo token");
+  function recoverToken(Currency currency_, uint256 amount_) external onlyRole(Roles.TREASURER_ROLE) {
+    if (currency_ == currency) {
+      revert SicBo__InvalidRecoverToken();
+    }
     currency_.transfer(_msgSender(), amount_);
-
     emit TokenRecovery(Currency.unwrap(currency_), amount_);
   }
 
-  function _additionalHandler(uint256 requestId_, uint256[] memory randomWords_) internal override {
-    executeRound(requestId_, randomWords_);
+  function claimTreasury() external nonReentrant onlyRole(Roles.TREASURER_ROLE) {
+    uint256 currentTreasuryAmount = treasuryAmount;
+    treasuryAmount = 0;
+    currency.transfer(_msgSender(), currentTreasuryAmount);
+    emit TreasuryClaim(currentTreasuryAmount);
+  }
+
+  function setBufferAndIntervalSeconds(uint256 bufferSeconds_, uint256 intervalSeconds_) 
+    external 
+    whenPaused 
+    onlyRole(DEFAULT_ADMIN_ROLE) 
+  {
+    if (bufferSeconds_ > intervalSeconds_) {
+      revert SicBo__InvalidBufferSeconds();
+    }
+    bufferSeconds = bufferSeconds_;
+    intervalSeconds = intervalSeconds_;
+    emit NewBufferAndIntervalSeconds(bufferSeconds, intervalSeconds);
+  }
+
+  function setMinBetAmount(uint256 minBetAmount_) external whenPaused onlyRole(DEFAULT_ADMIN_ROLE) {
+    if (minBetAmount_ == 0) {
+      revert SicBo__InvalidAmount(minBetAmount_);
+    }
+    minBetAmount = minBetAmount_;
+
+    emit NewMinBetAmount(currentEpoch, minBetAmount);
+  }
+
+  function setOracle(address oracle_) external whenPaused onlyRole(DEFAULT_ADMIN_ROLE) {
+    if (oracle_ == address(0)) {
+      revert SicBo__NullAddress();
+    }
+    oracleLatestRoundId = 0;
+    oracle = AggregatorV3Interface(oracle_);
+
+    oracle.latestRoundData();
+
+    emit NewOracle(oracle_);
+  }
+
+  function setOracleUpdateAllowance(uint256 oracleUpdateAllowance_) external whenPaused onlyRole(DEFAULT_ADMIN_ROLE) {
+    oracleUpdateAllowance = oracleUpdateAllowance_;
+
+    emit NewOracleUpdateAllowance(oracleUpdateAllowance_);
+  }
+
+  function setTreasuryFee(uint256 treasuryFee_) external whenPaused onlyRole(DEFAULT_ADMIN_ROLE) {
+    if (treasuryFee_ > MAX_TREASURY_FEE) {
+      revert SicBo__InvalidAmount(treasuryFee_);
+    }
+    treasuryFee = treasuryFee_;
+
+    emit NewTreasuryFee(currentEpoch, treasuryFee);
   }
 
   function _calculateRewards(uint256 epoch_) internal {
-    require(rounds[epoch_].rewardBaseCalAmount == 0 && rounds[epoch_].rewardAmount == 0, "Rewards calculated");
-    Round storage round = rounds[epoch_];
-    uint256 rewardBaseCalAmount;
+    uint256 epoch = epoch_;
+
+    if (rounds[epoch].rewardBaseCalAmount != 0 || rounds[epoch].rewardAmount != 0) {
+      revert SicBo__RewardsCalculated();
+    }
+
+    Round storage round = rounds[epoch];
     uint256 treasuryAmt;
     uint256 rewardAmount;
-    uint256 treasuryFee = sbSettings.treasuryFee;
+    uint256 rewardBaseCalAmount;
 
-    if (_isLow(round.closeTotalScore)) {
+    if (_isLow(round.diceResult.totalScore)) {
       rewardBaseCalAmount = round.lowAmount;
       treasuryAmt = (round.totalAmount * treasuryFee) / 10_000;
       rewardAmount = round.totalAmount - treasuryAmt;
-    } else if (_isHigh(round.closeTotalScore)) {
+    } else if (_isHigh(round.diceResult.totalScore)) {
       rewardBaseCalAmount = round.highAmount;
       treasuryAmt = (round.totalAmount * treasuryFee) / 10_000;
       rewardAmount = round.totalAmount - treasuryAmt;
@@ -257,60 +347,104 @@ contract SicBo is ISicBo, Pausable, ReentrancyGuard, Consumer, Ownable {
       rewardAmount = 0;
       treasuryAmt = round.totalAmount;
     }
+
     round.rewardBaseCalAmount = rewardBaseCalAmount;
     round.rewardAmount = rewardAmount;
-
     treasuryAmount += treasuryAmt;
 
-    emit RewardsCalculated(epoch_, rewardBaseCalAmount, rewardAmount, treasuryAmt);
+    emit RewardsCalculated(epoch, rewardBaseCalAmount, rewardAmount, treasuryAmt);
   }
 
-  function _safeEndRound(uint256 epoch_, uint256 requestId_, uint256[] memory dicesResult_) internal {
-    uint256 bufferSeconds = sbSettings.bufferSeconds;
+  function _safeEndRound(uint256 epoch_, uint256 roundId_, int256 price_) internal {
+    uint256 epoch = epoch_;
 
-    require(rounds[epoch_].lockAt != 0, "Can only end round after round has locked");
-    require(block.timestamp >= rounds[epoch_].closeAt, "Can only end round after closeTimestamp");
-    require(block.timestamp <= rounds[epoch_].closeAt + bufferSeconds, "Can only end round within bufferSeconds");
+    if (rounds[epoch].closeAt == 0) {
+      revert SicBo__RoundNotStarted(epoch);
+    }
+    if (block.timestamp < rounds[epoch].closeAt) {
+      revert SicBo__RoundNotEnded(epoch);
+    }
+    if (block.timestamp > rounds[epoch].closeAt + bufferSeconds) {
+      revert SicBo__EndRoundOutsideBuffer();
+    }
+    
+    (uint256 totalScore, uint256[] memory dices) = _rollDices(epoch_, roundId_, price_);
 
-    uint256 totalScore = _calcTotalScore(dicesResult_);
-    Round storage round = rounds[epoch_];
-    round.requestId = requestId_;
-    round.closeDicesResult = dicesResult_;
-    round.closeTotalScore = totalScore;
-    round.requestedVRF = true;
+    Round storage round = rounds[epoch];
 
-    emit EndRound(epoch_, requestId_, totalScore);
+    round.roundId = roundId_;
+    round.requestedPriceFeed = true;
+    round.diceResult = DiceResult({rollAt: block.timestamp, totalScore: totalScore, dices: dices});
+
+    emit EndRound(epoch, roundId_, totalScore);
   }
 
   function _safeStartRound(uint256 epoch_) internal {
-    require(genesisStartOnce, "Can only run after genesisStartRound is triggered");
-    require(rounds[epoch_ - 1].closeAt != 0, "Can only start round after round n-1 has ended");
-    require(block.timestamp >= rounds[epoch_ - 1].closeAt, "Can only start new round after round n-1 closeTimestamp");
-    _startRound(epoch_);
+    uint256 epoch = epoch_;
+
+    if (!genesisStartOnce) {
+      revert SicBo__GenesisRoundNotTriggered();
+    }
+    if (rounds[epoch - 1].closeAt == 0) {
+      revert SicBo__RoundNotStarted(epoch - 1);
+    }
+    if (block.timestamp < rounds[epoch - 1].closeAt) {
+      revert SicBo__RoundNotEnded(epoch - 1);
+    }
+
+    _startRound(epoch);
   }
 
   function _startRound(uint256 epoch_) internal {
-    uint256 intervalSeconds = sbSettings.intervalSeconds;
     Round storage round = rounds[epoch_];
-    round.startAt = block.timestamp;
-    round.lockAt = block.timestamp + intervalSeconds;
-    round.closeAt = block.timestamp + (2 * intervalSeconds);
     round.epoch = epoch_;
-    round.totalAmount = 0;
+    round.startAt = block.timestamp;
+    round.closeAt = block.timestamp + intervalSeconds;
 
     emit StartRound(epoch_);
   }
 
   function _bettable(uint256 epoch_) internal view returns (bool) {
-    return rounds[epoch_].startAt != 0 && rounds[epoch_].lockAt != 0 && block.timestamp > rounds[epoch_].startAt
-      && block.timestamp < rounds[epoch_].lockAt;
+    return (
+      rounds[epoch_].startAt != 0 &&
+      rounds[epoch_].closeAt != 0 &&
+      block.timestamp > rounds[epoch_].startAt &&
+      block.timestamp < rounds[epoch_].closeAt
+    );
   }
+  
 
-  function _calcTotalScore(uint256[] memory lockDicesResult_) internal pure returns (uint256 totalScore) {
-    for (uint256 i; i < lockDicesResult_.length;) {
-      totalScore += lockDicesResult_[i];
+  function _rollDices(uint256 epoch_, uint256 roundId_, int256 price_)
+    internal
+    view
+    returns (uint256 totalScore, uint256[] memory dices)
+  {
+    dices = new uint256[](3);
+    Round storage round = rounds[epoch_];
+    uint256 avgBetAmount = round.totalAmount / (round.numBetLow + round.numBetHigh);
+
+    uint256 seed = uint256(
+      keccak256(
+        abi.encode(
+          roundId_,
+          price_,
+          avgBetAmount,
+          block.coinbase,
+          block.gaslimit,
+          block.timestamp,
+          blockhash(block.number - 1),
+          blockhash(block.number - 2),
+          blockhash(block.number)
+        )
+      )
+    );
+
+    for (uint256 i; i < dices.length;) {
+      uint256 dice = uint256(keccak256(abi.encode(seed, i))) % 6 + 1;
       unchecked {
         ++i;
+        dices[i] = dice;
+        totalScore += dice;
       }
     }
   }
@@ -331,17 +465,19 @@ contract SicBo is ISicBo, Pausable, ReentrancyGuard, Consumer, Ownable {
     }
   }
 
-  function _preFormatRandomWord(uint256[] memory rawRandomWords)
-    internal
-    pure
-    returns (uint256[] memory formattedRandomWords)
-  {
-    formattedRandomWords = new uint256[](rawRandomWords.length);
-    for (uint256 i; i < rawRandomWords.length;) {
-      formattedRandomWords[i] = rawRandomWords[i] % 6 + 1;
-      unchecked {
-        ++i;
-      }
+  function _getPriceFromOracle() internal view returns (uint80, int256) {
+    uint256 leastAllowedTimestamp = block.timestamp + oracleUpdateAllowance;
+    (uint80 roundId, int256 price,, uint256 timestamp,) = oracle.latestRoundData();
+    require(timestamp <= leastAllowedTimestamp, "Oracle update exceeded max timestamp allowance");
+    require(uint256(roundId) > oracleLatestRoundId, "Oracle update roundId must be larger than oracleLatestRoundId");
+    return (roundId, price);
+  }
+
+  function _isContract(address account) internal view returns (bool isContract) {
+    uint256 size;
+    assembly {
+      size := extcodesize(account)
     }
+    isContract = size > 0;
   }
 }

@@ -1,5 +1,17 @@
 Sicbo deployment for demo purposes
 
+
+COMPARATIONS
+
+Chainlink VRF
+- Expensive 
+- Can configure the callback gas limit, num of block confirmations
+
+API3 QRNG 
+- Cheaper
+- Only able to configure the size of array random number generated
+
+
 INSTALLATION
 
 $ forge install
@@ -22,7 +34,7 @@ DEPLOYMENT
 $ source .env
 $ forge script script/Sicbo.s.sol \
         -f fuji \
-        --etherscan-api-key $SNOWTRACE_SCAN \
+        --etherscan-api-key $SNOWTRACE_KEY \
         --private-key $DEPLOYER_KEY \
         --broadcast --verify -vv
 
