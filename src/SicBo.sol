@@ -421,7 +421,9 @@ contract SicBo is ISicBo, SicBoErrors, Pausable, ReentrancyGuard, AccessControlE
   {
     dices = new uint256[](3);
     Round storage round = rounds[epoch_];
-    uint256 avgBetAmount = round.totalAmount / (round.numBetLow + round.numBetHigh);
+
+    uint256 numOfPlayer = round.numBetLow + round.numBetHigh;
+    uint256 avgBetAmount = numOfPlayer == 0 ? 0 : round.totalAmount / numOfPlayer;
 
     uint256 seed = uint256(
       keccak256(
