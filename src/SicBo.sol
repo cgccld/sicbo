@@ -443,10 +443,10 @@ contract SicBo is ISicBo, SicBoErrors, Pausable, ReentrancyGuard, AccessControlE
 
     for (uint256 i; i < dices.length;) {
       uint256 dice = uint256(keccak256(abi.encode(seed, i))) % 6 + 1;
+      dices[i] = dice;
       unchecked {
-        ++i;
-        dices[i] = dice;
         totalScore += dice;
+        ++i;
       }
     }
   }
@@ -468,10 +468,11 @@ contract SicBo is ISicBo, SicBoErrors, Pausable, ReentrancyGuard, AccessControlE
   }
 
   function _getPriceFromOracle() internal view returns (uint80, int256) {
-    uint256 leastAllowedTimestamp = block.timestamp + oracleUpdateAllowance;
-    (uint80 roundId, int256 price,, uint256 timestamp,) = oracle.latestRoundData();
-    require(timestamp <= leastAllowedTimestamp, "Oracle update exceeded max timestamp allowance");
-    require(uint256(roundId) > oracleLatestRoundId, "Oracle update roundId must be larger than oracleLatestRoundId");
+    // uint256 leastAllowedTimestamp = block.timestamp + oracleUpdateAllowance;
+    // (uint80 roundId, int256 price,, uint256 timestamp,) = oracle.latestRoundData();
+    (uint80 roundId, int256 price,,,) = oracle.latestRoundData();
+    // require(timestamp <= leastAllowedTimestamp, "Oracle update exceeded max timestamp allowance");
+    // require(uint256(roundId) > oracleLatestRoundId, "Oracle update roundId must be larger than oracleLatestRoundId");
     return (roundId, price);
   }
 
