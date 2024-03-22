@@ -19,7 +19,7 @@ contract SicboDeployer is BaseMigrate {
         sicbo, 
         0x5498BB86BC934c8D34FDA08E81D444153d0D06aD,
         msg.sender,
-        msg.sender,
+        0xeeC5915A21DA64a58DE1e9a3D7dd7b8Bff775cF0,
         180,
         180, 
         1 ether, 
