@@ -51,10 +51,12 @@ interface ISicBo {
 
   event TreasuryClaim(uint256 amount);
   event TokenRecovery(address indexed token, uint256 amount);
-  
+
   event NewOracle(address oracle);
   event NewOracleUpdateAllowance(uint256 oracleUpdateAllowance);
   event NewTreasuryFee(uint256 indexed epoch, uint256 treasuryFee);
   event NewMinBetAmount(uint256 indexed epoch, uint256 minBetAmount);
   event NewBufferAndIntervalSeconds(uint256 bufferSeconds, uint256 intervalSeconds);
+  event NewAvailableRewardAmount(uint256 indexed epoch, uint256 amount);
+  event NewRequireNFTAmount(uint256 indexed epoch, uint256 amount);
 }

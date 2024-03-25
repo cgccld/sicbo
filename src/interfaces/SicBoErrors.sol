@@ -18,4 +18,5 @@ interface SicBoErrors {
   error SicBo__InvalidBufferSeconds();
   error SicBo__NullAddress();
   error SicBo__InvalidAmount(uint256 amount);
+  error SicBo__OnlyNFTHolder();
 }

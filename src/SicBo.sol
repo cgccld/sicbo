@@ -7,6 +7,7 @@ import {Currency} from "src/libraries/LibCurrency.sol";
 import {SicBoErrors} from "src/interfaces/SicBoErrors.sol";
 import {LibRoles as Roles} from "src/libraries/LibRoles.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
+import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {AggregatorV3Interface} from "chainlink/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
 import {AccessControlEnumerable} from "@openzeppelin/contracts/access/extensions/AccessControlEnumerable.sol";
@@ -14,6 +15,7 @@ import {AccessControlEnumerable} from "@openzeppelin/contracts/access/extensions
 
 contract SicBo is ISicBo, SicBoErrors, Pausable, ReentrancyGuard, AccessControlEnumerable {
   Currency currency;
+  address nftAddress;
   AggregatorV3Interface public oracle;
 
   bool public genesisStartOnce; // default false;
@@ -30,7 +32,10 @@ contract SicBo is ISicBo, SicBoErrors, Pausable, ReentrancyGuard, AccessControlE
   uint256 public oracleLatestRoundId; // converted from uint80 (Chainlink)
   uint256 public oracleUpdateAllowance; // seconds
 
-  uint256 public constant MAX_TREASURY_FEE = 1000; // 10%
+  uint256 public requireAmount; // required nft amount
+  uint256 public availableRewardAmount;
+
+  uint256 public constant MAX_TREASURY_FEE = 10_000; // 100%
 
   mapping(uint256 => mapping(address => BetInfo)) public ledger;
   mapping(uint256 => Round) public rounds;
@@ -38,6 +43,7 @@ contract SicBo is ISicBo, SicBoErrors, Pausable, ReentrancyGuard, AccessControlE
 
   constructor(
     Currency currency_,
+    address nftAddress_,
     address oracleAddress_,
     address adminAddress_,
     address operatorAddress_,
@@ -45,13 +51,18 @@ contract SicBo is ISicBo, SicBoErrors, Pausable, ReentrancyGuard, AccessControlE
     uint256 bufferSeconds_,
     uint256 minBetAmount_,
     uint256 oracleUpdateAllowance_,
+    uint256 availableRewardAmount_,
+    uint256 requireAmount_,
     uint256 treasuryFee_
   ) {
     currency = currency_;
+    nftAddress = nftAddress_;
     treasuryFee = treasuryFee_;
     minBetAmount = minBetAmount_;
+    requireAmount = requireAmount_;
     bufferSeconds = bufferSeconds_;
     intervalSeconds = intervalSeconds_;
+    availableRewardAmount = availableRewardAmount_;
     oracle = AggregatorV3Interface(oracleAddress_);
     oracleUpdateAllowance = oracleUpdateAllowance_;
 
@@ -66,6 +77,14 @@ contract SicBo is ISicBo, SicBoErrors, Pausable, ReentrancyGuard, AccessControlE
     address sender = _msgSender();
     if (_isContract(sender) || sender != tx.origin) {
       revert SicBo__ProxyUnallowed();
+    }
+    _;
+  }
+
+  modifier onlyNFTHolder() {
+    address sender = _msgSender();
+    if (IERC721(nftAddress).balanceOf(sender) < requireAmount) {
+      revert SicBo__OnlyNFTHolder();
     }
     _;
   }
@@ -99,28 +118,24 @@ contract SicBo is ISicBo, SicBoErrors, Pausable, ReentrancyGuard, AccessControlE
   function claimable(uint256 epoch_, address user_) public view returns (bool) {
     BetInfo memory betInfo = ledger[epoch_][user_];
     Round memory round = rounds[epoch_];
-    
+
     return (
-      round.requestedPriceFeed &&
-      betInfo.amount != 0 &&
-      !betInfo.claimed &&
-      (betInfo.position == Position.Low || betInfo.position == Position.High)
+      round.requestedPriceFeed && betInfo.amount != 0 && !betInfo.claimed
+        && (betInfo.position == Position.Low || betInfo.position == Position.High)
     );
   }
 
   function refundable(uint256 epoch_, address user_) public view returns (bool) {
     BetInfo memory betInfo = ledger[epoch_][user_];
     Round memory round = rounds[epoch_];
-    
+
     return (
-      !round.requestedPriceFeed &&
-      !betInfo.claimed &&
-      block.timestamp > round.closeAt + bufferSeconds &&
-      betInfo.amount != 0
+      !round.requestedPriceFeed && !betInfo.claimed && block.timestamp > round.closeAt + bufferSeconds
+        && betInfo.amount != 0
     );
   }
 
-  function betLow(uint256 epoch_, uint256 amount_) external whenNotPaused nonReentrant onlyEOA {
+  function betLow(uint256 epoch_, uint256 amount_) external whenNotPaused nonReentrant onlyEOA onlyNFTHolder {
     uint256 epoch = epoch_;
     uint256 amount = amount_;
     address sender = _msgSender();
@@ -151,7 +166,7 @@ contract SicBo is ISicBo, SicBoErrors, Pausable, ReentrancyGuard, AccessControlE
     emit BetLow(sender, epoch, amount);
   }
 
-  function betHigh(uint256 epoch_, uint256 amount_) external whenNotPaused nonReentrant onlyEOA {
+  function betHigh(uint256 epoch_, uint256 amount_) external whenNotPaused nonReentrant onlyEOA onlyNFTHolder {
     uint256 epoch = epoch_;
     uint256 amount = amount_;
     address sender = _msgSender();
@@ -273,10 +288,10 @@ contract SicBo is ISicBo, SicBoErrors, Pausable, ReentrancyGuard, AccessControlE
     emit TreasuryClaim(currentTreasuryAmount);
   }
 
-  function setBufferAndIntervalSeconds(uint256 bufferSeconds_, uint256 intervalSeconds_) 
-    external 
-    whenPaused 
-    onlyRole(DEFAULT_ADMIN_ROLE) 
+  function setBufferAndIntervalSeconds(uint256 bufferSeconds_, uint256 intervalSeconds_)
+    external
+    whenPaused
+    onlyRole(DEFAULT_ADMIN_ROLE)
   {
     if (bufferSeconds_ > intervalSeconds_) {
       revert SicBo__InvalidBufferSeconds();
@@ -284,6 +299,24 @@ contract SicBo is ISicBo, SicBoErrors, Pausable, ReentrancyGuard, AccessControlE
     bufferSeconds = bufferSeconds_;
     intervalSeconds = intervalSeconds_;
     emit NewBufferAndIntervalSeconds(bufferSeconds, intervalSeconds);
+  }
+
+  function setRequireNFTAmount(uint256 requireAmount_) external whenPaused onlyRole(DEFAULT_ADMIN_ROLE) {
+    if (requireAmount_ == 0) {
+      revert SicBo__InvalidAmount(requireAmount_);
+    }
+    requireAmount = requireAmount_;
+
+    emit NewRequireNFTAmount(currentEpoch, requireAmount_);
+  }
+
+  function setAvailableRewardAmount(uint256 availableRewardAmount_) external whenPaused onlyRole(DEFAULT_ADMIN_ROLE) {
+    if (availableRewardAmount_ == 0) {
+      revert SicBo__InvalidAmount(availableRewardAmount_);
+    }
+    availableRewardAmount = availableRewardAmount_;
+
+    emit NewAvailableRewardAmount(currentEpoch, availableRewardAmount_);
   }
 
   function setMinBetAmount(uint256 minBetAmount_) external whenPaused onlyRole(DEFAULT_ADMIN_ROLE) {
@@ -367,7 +400,7 @@ contract SicBo is ISicBo, SicBoErrors, Pausable, ReentrancyGuard, AccessControlE
     if (block.timestamp > rounds[epoch].closeAt + bufferSeconds) {
       revert SicBo__EndRoundOutsideBuffer();
     }
-    
+
     (uint256 totalScore, uint256[] memory dices) = _rollDices(epoch_, roundId_, price_);
 
     Round storage round = rounds[epoch];
@@ -400,19 +433,17 @@ contract SicBo is ISicBo, SicBoErrors, Pausable, ReentrancyGuard, AccessControlE
     round.epoch = epoch_;
     round.startAt = block.timestamp;
     round.closeAt = block.timestamp + intervalSeconds;
+    round.rewardAmount = availableRewardAmount;
 
     emit StartRound(epoch_);
   }
 
   function _bettable(uint256 epoch_) internal view returns (bool) {
     return (
-      rounds[epoch_].startAt != 0 &&
-      rounds[epoch_].closeAt != 0 &&
-      block.timestamp > rounds[epoch_].startAt &&
-      block.timestamp < rounds[epoch_].closeAt
+      rounds[epoch_].startAt != 0 && rounds[epoch_].closeAt != 0 && block.timestamp > rounds[epoch_].startAt
+        && block.timestamp < rounds[epoch_].closeAt
     );
   }
-  
 
   function _rollDices(uint256 epoch_, uint256 roundId_, int256 price_)
     internal
