@@ -483,7 +483,7 @@ contract SicBo is ISicBo, SicBoErrors, Pausable, ReentrancyGuard, AccessControlE
   }
 
   function _isLow(uint256 totalScore_) internal pure returns (bool isLow) {
-    if (totalScore_ > 3 && totalScore_ < 11) {
+    if (totalScore_ > 2 && totalScore_ < 11) {
       isLow = true;
     } else {
       isLow = false;
@@ -491,7 +491,7 @@ contract SicBo is ISicBo, SicBoErrors, Pausable, ReentrancyGuard, AccessControlE
   }
 
   function _isHigh(uint256 totalScore_) internal pure returns (bool isHigh) {
-    if (totalScore_ > 10 && totalScore_ < 18) {
+    if (totalScore_ > 10 && totalScore_ < 19) {
       isHigh = true;
     } else {
       isHigh = false;
