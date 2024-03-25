@@ -433,7 +433,7 @@ contract SicBo is ISicBo, SicBoErrors, Pausable, ReentrancyGuard, AccessControlE
     round.epoch = epoch_;
     round.startAt = block.timestamp;
     round.closeAt = block.timestamp + intervalSeconds;
-    round.rewardAmount = availableRewardAmount;
+    round.totalAmount = availableRewardAmount;
 
     emit StartRound(epoch_);
   }
