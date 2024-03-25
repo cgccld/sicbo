@@ -9,7 +9,7 @@ contract Pampda is ERC20 {
   function mint(address to_, uint256 amount_) public {
     _mint(to_, amount_);
   }
-  
+
   function increaseAllowance(address spender, uint256 addedValue) public returns (bool) {
     address owner = _msgSender();
     _approve(owner, spender, allowance(owner, spender) + addedValue);
