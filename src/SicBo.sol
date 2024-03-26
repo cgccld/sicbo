@@ -120,8 +120,13 @@ contract SicBo is ISicBo, SicBoErrors, Pausable, ReentrancyGuard, AccessControlE
     Round memory round = rounds[epoch_];
 
     return (
-      round.requestedPriceFeed && betInfo.amount != 0 && !betInfo.claimed
-        && (betInfo.position == Position.Low || betInfo.position == Position.High)
+      round.requestedPriceFeed && 
+      betInfo.amount != 0 && 
+      !betInfo.claimed && 
+      (
+        betInfo.position == Position.Low && _isLow(round.diceResult.totalScore) || 
+        betInfo.position == Position.High && _isHigh(round.diceResult.totalScore)
+      )
     );
   }
 
@@ -363,27 +368,21 @@ contract SicBo is ISicBo, SicBoErrors, Pausable, ReentrancyGuard, AccessControlE
     }
 
     Round storage round = rounds[epoch];
-    uint256 treasuryAmt;
     uint256 rewardAmount;
     uint256 rewardBaseCalAmount;
+    uint256 treasuryAmt = (round.totalAmount * treasuryFee) / 10_000;
 
     if (_isLow(round.diceResult.totalScore)) {
       rewardBaseCalAmount = round.lowAmount;
-      treasuryAmt = (round.totalAmount * treasuryFee) / 10_000;
       rewardAmount = round.totalAmount - treasuryAmt;
     } else if (_isHigh(round.diceResult.totalScore)) {
       rewardBaseCalAmount = round.highAmount;
-      treasuryAmt = (round.totalAmount * treasuryFee) / 10_000;
       rewardAmount = round.totalAmount - treasuryAmt;
-    } else {
-      rewardBaseCalAmount = 0;
-      rewardAmount = 0;
-      treasuryAmt = round.totalAmount;
     }
 
-    round.rewardBaseCalAmount = rewardBaseCalAmount;
-    round.rewardAmount = rewardAmount;
     treasuryAmount += treasuryAmt;
+    round.rewardAmount = rewardAmount;
+    round.rewardBaseCalAmount = rewardBaseCalAmount;
 
     emit RewardsCalculated(epoch, rewardBaseCalAmount, rewardAmount, treasuryAmt);
   }
@@ -433,7 +432,17 @@ contract SicBo is ISicBo, SicBoErrors, Pausable, ReentrancyGuard, AccessControlE
     round.epoch = epoch_;
     round.startAt = block.timestamp;
     round.closeAt = block.timestamp + intervalSeconds;
-    round.totalAmount = availableRewardAmount;
+
+    if (epoch_ == 1) {
+      round.totalAmount = availableRewardAmount;
+    } else {
+      Round storage preRound = rounds[epoch_ - 1];
+      if (preRound.highAmount == 0 && preRound.lowAmount == 0) {
+        round.totalAmount = availableRewardAmount + preRound.rewardAmount;
+      } else {
+        round.totalAmount = availableRewardAmount;
+      }
+    }
 
     emit StartRound(epoch_);
   }
